@@ -3,6 +3,46 @@ package io.github.gyai.projects.client;
 import java.util.List;
 
 public final class SkillCatalog {
+    public static final Group WARRIOR = new Group(
+            "ウォーリアー",
+            "闘気を高めて戦う近接クラス ・ 闘気 100",
+            0xFFE0A33A,
+            List.of(
+                    new Skill(
+                            "Q / 右クリック", "回転斬り", "試作スキル",
+                            "闘気消費なし / 基礎CD 8秒 / 現在5.6秒 / 半径3",
+                            "周囲の敵へ11＋攻撃力×1.2のダメージ。"
+                                    + "異なる敵1体につき闘気を1獲得する。",
+                            false
+                    ),
+                    new Skill(
+                            "E", "未実装", "アクティブ",
+                            "未実装",
+                            "ウォーリアースキルは未実装です。",
+                            true
+                    ),
+                    new Skill(
+                            "R", "未実装", "アクティブ",
+                            "未実装",
+                            "ウォーリアースキルは未実装です。",
+                            true
+                    ),
+                    new Skill(
+                            "F", "未実装", "アルティメット",
+                            "未実装",
+                            "ウォーリアースキルは未実装です。",
+                            true
+                    ),
+                    new Skill(
+                            "PASSIVE", "闘気", "パッシブ",
+                            "最大100 / 戦闘後10秒維持 / 毎秒5減少",
+                            "闘気1につき与ダメージが0.1%増加。"
+                                    + "闘気100中は有効な敵への1ヒットごとに体力を1.0回復する。",
+                            false
+                    )
+            )
+    );
+
     public static final Group SCOUT = new Group(
             "Scout",
             "機動力と連射に優れたレンジドクラス",
@@ -143,22 +183,19 @@ public final class SkillCatalog {
                             "CD 4秒",
                             "向いている方向へ素早く踏み込む。",
                             false
-                    ),
-                    new Skill(
-                            "Q / 右クリック", "回転斬り", "試作剣",
-                            "闘気30 / 実CD 5.6秒 / 半径3",
-                            "周囲の敵へ11＋攻撃力×1.2のダメージを与える。",
-                            false
                     )
             )
     );
 
-    public static final List<Group> GROUPS = List.of(SCOUT, PAINTER, COMMON);
+    public static final List<Group> GROUPS = List.of(WARRIOR, SCOUT, COMMON);
 
     private SkillCatalog() {
     }
 
     public static Skill findHudSkill(String className, int slotIndex, String slotName) {
+        if (WARRIOR.name().equals(className) && slotIndex >= 0 && slotIndex < 4) {
+            return WARRIOR.skills().get(slotIndex);
+        }
         if (SCOUT.name().equals(className) && slotIndex >= 0 && slotIndex < 4) {
             return SCOUT.skills().get(slotIndex);
         }
