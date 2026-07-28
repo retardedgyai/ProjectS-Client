@@ -1,0 +1,63 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    splitEnvironmentSourceSets()
+    mods {
+        "projects_client" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named('build') {
+    doLast {
+        if (!project.hasProperty('skipAutoStart')) {
+            def script = layout.projectDirectory
+                    .file('scripts/deploy-and-start-client.ps1').asFile.absolutePath
+            def process = new ProcessBuilder(
+                    'powershell.exe',
+                    '-NoProfile',
+                    '-ExecutionPolicy', 'Bypass',
+                    '-File', script
+            ).inheritIO().start()
+            if (process.waitFor() != 0) {
+                throw new GradleException('Client mod deployment or Minecraft launch failed.')
+            }
+        }
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "projects_client",
+  "version": "${version}",
+  "name": "ProjectS Client",
+  "description": "ProjectS専用のクライアント入力MOD",
+  "authors": ["gyai"],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.gyai.projects.client.ProjectSClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.1.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
