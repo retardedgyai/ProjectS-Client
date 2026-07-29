@@ -23,3 +23,9 @@ Output:
 ```text
 build\libs\projects-client-0.1.0.jar
 ```
+
+## 管理者用バランス調整
+
+対応するProjectSサーバーへ接続すると、ProjectSメニューから
+「バランス調整」を開けます。利用にはサーバー側の`projects.dev`権限が必要です。
+変更はサーバー側で検証され、「適用」とファイルへの「保存」は別操作です。

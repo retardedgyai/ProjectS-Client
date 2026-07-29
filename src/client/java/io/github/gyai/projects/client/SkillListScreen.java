@@ -216,7 +216,7 @@ public final class SkillListScreen extends Screen {
         );
         graphics.text(
                 font,
-                ellipsize(skill.description(), cardWidth - 20),
+                ellipsize(BalanceClientState.skillDescription(skill), cardWidth - 20),
                 x + 10,
                 y + 35,
                 skill.unavailable() ? 0xFF68737C : 0xFFC4CED5,
@@ -259,7 +259,8 @@ public final class SkillListScreen extends Screen {
                 260
         ));
         lines.addAll(font.split(
-                Component.literal(skill.description()).withStyle(ChatFormatting.YELLOW),
+                Component.literal(BalanceClientState.skillDescription(skill))
+                        .withStyle(ChatFormatting.YELLOW),
                 260
         ));
         if (skill.unavailable()) {

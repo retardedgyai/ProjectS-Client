@@ -9,10 +9,11 @@ import net.minecraft.network.chat.Component;
 
 public final class ProjectSMenuScreen extends Screen {
     private static final int PANEL_WIDTH = 248;
-    private static final int PANEL_HEIGHT = 184;
+    private static final int PANEL_HEIGHT = 212;
     private static final int ACCENT = 0xFF48C9E8;
 
     private final Screen parent;
+    private int knownBalanceRevision;
 
     public ProjectSMenuScreen(Screen parent) {
         super(Component.literal("ProjectS"));
@@ -21,6 +22,11 @@ public final class ProjectSMenuScreen extends Screen {
 
     @Override
     protected void init() {
+        knownBalanceRevision = BalanceClientState.localRevision();
+        if (!BalanceClientState.received()
+                && BalanceClientState.supportedByConnection()) {
+            BalanceClientState.probe();
+        }
         int panelX = (width - PANEL_WIDTH) / 2;
         int panelY = (height - PANEL_HEIGHT) / 2;
         int buttonX = panelX + 24;
@@ -48,18 +54,40 @@ public final class ProjectSMenuScreen extends Screen {
                         Component.literal("Dev Menu"),
                         button -> openDevMenu()
                 )
-                .bounds(buttonX, panelY + 114, buttonWidth, 22)
+                .bounds(buttonX, panelY + 142, buttonWidth, 22)
                 .tooltip(Tooltip.create(Component.literal(
                         "サーバーの開発メニューを開きます（projects.dev 権限が必要）")))
                 .build());
         devMenuButton.active = ClientPlayNetworking.canSend(SkillInputPayload.TYPE);
 
+        Button balanceButton = addRenderableWidget(Button.builder(
+                        Component.literal("バランス調整"),
+                        button -> BalanceClientState.requestOpen(this))
+                .bounds(buttonX, panelY + 114, buttonWidth, 22)
+                .tooltip(Tooltip.create(Component.literal(
+                        BalanceClientState.state().permitted()
+                                ? "武器・スキルのグローバル基礎値を調整します"
+                                : "projects.dev 権限と対応サーバーが必要です")))
+                .build());
+        balanceButton.active = BalanceClientState.supportedByConnection()
+                && BalanceClientState.state().supported()
+                && BalanceClientState.state().permitted();
+
         addRenderableWidget(Button.builder(
                         Component.literal("戻る"),
                         button -> onClose()
                 )
-                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 150, 84, 20)
+                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 178, 84, 20)
                 .build());
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (knownBalanceRevision != BalanceClientState.localRevision()) {
+            clearWidgets();
+            init();
+        }
     }
 
     @Override

@@ -5,6 +5,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -38,6 +39,14 @@ public final class ProjectSClient implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(
                 WarriorLoadoutStatePayload.TYPE,
                 WarriorLoadoutStatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                BalanceRequestPayload.TYPE, BalanceRequestPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                BalanceUpdatePayload.TYPE, BalanceUpdatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                BalanceActionPayload.TYPE, BalanceActionPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                BalanceStatePayload.TYPE, BalanceStatePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
@@ -47,6 +56,13 @@ public final class ProjectSClient implements ClientModInitializer {
                 (payload, context) ->
                         WarriorLoadoutClientState.receive(payload.state())
         );
+        ClientPlayNetworking.registerGlobalReceiver(
+                BalanceStatePayload.TYPE,
+                (payload, context) ->
+                        BalanceClientState.receive(payload.state())
+        );
+        ClientPlayConnectionEvents.DISCONNECT.register(
+                (handler, client) -> BalanceClientState.reset());
         ProjectSSkillHud.register();
         ProjectSScreenManager.register();
 

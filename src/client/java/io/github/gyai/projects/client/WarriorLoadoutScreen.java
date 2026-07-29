@@ -71,7 +71,7 @@ public final class WarriorLoadoutScreen extends Screen {
                     .tooltip(skill == null ? null : Tooltip.create(
                             Component.literal(
                                     skill.stats() + "\n"
-                                            + skill.description())))
+                                            + BalanceClientState.skillDescription(skill))))
                     .build());
             button.active = state.available() && !equipped;
         }
@@ -154,7 +154,7 @@ public final class WarriorLoadoutScreen extends Screen {
             graphics.text(
                     font,
                     font.plainSubstrByWidth(
-                            equipped.description(), detailWidth),
+                            BalanceClientState.skillDescription(equipped), detailWidth),
                     panelX + 148, panelY + 161,
                     0xFFE3D4AD, false);
         }

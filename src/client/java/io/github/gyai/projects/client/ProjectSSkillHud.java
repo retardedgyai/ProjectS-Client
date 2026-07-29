@@ -255,7 +255,8 @@ public final class ProjectSSkillHud {
                     250
             ));
             lines.addAll(font.split(
-                    Component.literal(skill.description()).withStyle(ChatFormatting.YELLOW),
+                    Component.literal(BalanceClientState.skillDescription(skill))
+                            .withStyle(ChatFormatting.YELLOW),
                     250
             ));
         }
