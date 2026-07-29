@@ -47,6 +47,8 @@ public final class ProjectSClient implements ClientModInitializer {
                 BalanceActionPayload.TYPE, BalanceActionPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(
                 BalanceStatePayload.TYPE, BalanceStatePayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                MonsterUiPayload.TYPE, MonsterUiPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
@@ -61,10 +63,20 @@ public final class ProjectSClient implements ClientModInitializer {
                 (payload, context) ->
                         BalanceClientState.receive(payload.state())
         );
+        ClientPlayNetworking.registerGlobalReceiver(
+                MonsterUiPayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> MonsterUiClientState.receive(
+                                payload.update()))
+        );
         ClientPlayConnectionEvents.DISCONNECT.register(
-                (handler, client) -> BalanceClientState.reset());
+                (handler, client) -> {
+                    BalanceClientState.reset();
+                    MonsterUiClientState.clear();
+                });
         ProjectSSkillHud.register();
         ProjectSScreenManager.register();
+        MonsterUiRenderer.register();
 
         // Minecraftの移動キーWとの衝突を避けるため、初期値はQ/E/R/F。
         // 設定 > 操作設定 > キー割り当て から自由に変更可能。
@@ -75,6 +87,7 @@ public final class ProjectSClient implements ClientModInitializer {
         dodge = register("key.projects_client.dodge", GLFW.GLFW_KEY_LEFT_SHIFT);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            MonsterUiClientState.tick(client);
             // チャット・インベントリ・各種画面を開いている間は誤発動させない。
             if (client.player == null || client.getConnection() == null || client.screen != null) {
                 releaseAttack();
