@@ -77,13 +77,18 @@ public final class ProjectSSkillHud {
 
         HudStatePayload.HudState.SkillSlot slot = state.slots().get(slotIndex);
         SkillCatalog.Skill skill = SkillCatalog.findHudSkill(
-                state.className(), slotIndex, slot.name());
+                state.className(), slot.skillId(),
+                slotIndex, slot.name());
         graphics.setTooltipForNextFrame(
                 client.font,
                 buildTooltip(client.font, slot, skill),
                 mouseX,
                 mouseY
         );
+    }
+
+    public static HudStatePayload.HudState state() {
+        return state;
     }
 
     private static void render(GuiGraphicsExtractor graphics, net.minecraft.client.DeltaTracker deltaTracker) {

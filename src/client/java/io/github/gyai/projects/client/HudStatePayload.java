@@ -11,18 +11,21 @@ import java.util.List;
 
 public record HudStatePayload(HudState state) implements CustomPacketPayload {
     public static final Type<HudStatePayload> TYPE = new Type<>(
-            Identifier.fromNamespaceAndPath("projects", "hud_state"));
+            Identifier.fromNamespaceAndPath("projects", "hud_state_v2"));
     public static final StreamCodec<FriendlyByteBuf, HudStatePayload> CODEC =
             CustomPacketPayload.codec(HudStatePayload::write, HudStatePayload::read);
-    private static final int PROTOCOL_VERSION = 1;
+    private static final int PROTOCOL_VERSION = 2;
     private static final int SLOT_COUNT = 4;
 
     private static HudStatePayload read(FriendlyByteBuf buffer) {
         int version = buffer.readUnsignedByte();
         if (version != PROTOCOL_VERSION) {
-            throw new IllegalArgumentException("Unsupported ProjectS HUD protocol: " + version);
+            buffer.skipBytes(buffer.readableBytes());
+            return new HudStatePayload(HudState.hidden());
         }
         boolean visible = buffer.readBoolean();
+        boolean inCombat = buffer.readBoolean();
+        String classId = readString(buffer);
         String className = readString(buffer);
         String resourceName = readString(buffer);
         float resourceCurrent = buffer.readFloat();
@@ -30,6 +33,7 @@ public record HudStatePayload(HudState state) implements CustomPacketPayload {
         List<HudState.SkillSlot> slots = new ArrayList<>(SLOT_COUNT);
         for (int index = 0; index < SLOT_COUNT; index++) {
             slots.add(new HudState.SkillSlot(
+                    readString(buffer),
                     readString(buffer),
                     readString(buffer),
                     buffer.readFloat(),
@@ -40,7 +44,7 @@ public record HudStatePayload(HudState state) implements CustomPacketPayload {
             ));
         }
         return new HudStatePayload(new HudState(
-                visible, className, resourceName,
+                visible, inCombat, classId, className, resourceName,
                 resourceCurrent, resourceMaximum, List.copyOf(slots)));
     }
 
@@ -60,6 +64,8 @@ public record HudStatePayload(HudState state) implements CustomPacketPayload {
 
     public record HudState(
             boolean visible,
+            boolean inCombat,
+            String classId,
             String className,
             String resourceName,
             float resourceCurrent,
@@ -67,11 +73,13 @@ public record HudStatePayload(HudState state) implements CustomPacketPayload {
             List<SkillSlot> slots
     ) {
         public static HudState hidden() {
-            return new HudState(false, "", "", 0, 0, List.of());
+            return new HudState(
+                    false, false, "", "", "", 0, 0, List.of());
         }
 
         public record SkillSlot(
                 String key,
+                String skillId,
                 String name,
                 float cooldownSeconds,
                 int charges,

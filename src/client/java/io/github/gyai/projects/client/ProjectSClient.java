@@ -29,9 +29,23 @@ public final class ProjectSClient implements ClientModInitializer {
     public void onInitializeClient() {
         PayloadTypeRegistry.serverboundPlay().register(SkillInputPayload.TYPE, SkillInputPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(HudStatePayload.TYPE, HudStatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                WarriorLoadoutRequestPayload.TYPE,
+                WarriorLoadoutRequestPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                WarriorLoadoutSelectPayload.TYPE,
+                WarriorLoadoutSelectPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                WarriorLoadoutStatePayload.TYPE,
+                WarriorLoadoutStatePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
+        );
+        ClientPlayNetworking.registerGlobalReceiver(
+                WarriorLoadoutStatePayload.TYPE,
+                (payload, context) ->
+                        WarriorLoadoutClientState.receive(payload.state())
         );
         ProjectSSkillHud.register();
         ProjectSScreenManager.register();

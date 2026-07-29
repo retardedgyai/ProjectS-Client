@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 
 public final class ProjectSMenuScreen extends Screen {
     private static final int PANEL_WIDTH = 248;
-    private static final int PANEL_HEIGHT = 156;
+    private static final int PANEL_HEIGHT = 184;
     private static final int ACCENT = 0xFF48C9E8;
 
     private final Screen parent;
@@ -35,11 +35,20 @@ public final class ProjectSMenuScreen extends Screen {
                         "クラス別のスキル説明と詳細ツールチップを表示します")))
                 .build());
 
+        Button loadoutButton = addRenderableWidget(Button.builder(
+                        Component.literal("スキル装備"),
+                        button -> WarriorLoadoutClientState.requestOpen(this))
+                .bounds(buttonX, panelY + 86, buttonWidth, 22)
+                .tooltip(Tooltip.create(Component.literal(
+                        "戦闘外でウォーリアーのQ・E・R・Fを変更します")))
+                .build());
+        loadoutButton.active = WarriorLoadoutClientState.supported();
+
         Button devMenuButton = addRenderableWidget(Button.builder(
                         Component.literal("Dev Menu"),
                         button -> openDevMenu()
                 )
-                .bounds(buttonX, panelY + 86, buttonWidth, 22)
+                .bounds(buttonX, panelY + 114, buttonWidth, 22)
                 .tooltip(Tooltip.create(Component.literal(
                         "サーバーの開発メニューを開きます（projects.dev 権限が必要）")))
                 .build());
@@ -49,7 +58,7 @@ public final class ProjectSMenuScreen extends Screen {
                         Component.literal("戻る"),
                         button -> onClose()
                 )
-                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 122, 84, 20)
+                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 150, 84, 20)
                 .build());
     }
 

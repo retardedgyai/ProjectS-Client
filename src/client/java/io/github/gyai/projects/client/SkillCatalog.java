@@ -9,32 +9,82 @@ public final class SkillCatalog {
             0xFFE0A33A,
             List.of(
                     new Skill(
-                            "Q / 右クリック", "回転斬り", "試作スキル",
-                            "闘気消費なし / 基礎CD 8秒 / 現在5.6秒 / 半径3",
+                            "spin_slash", "Q / 右クリック", "回転斬り", "Q候補",
+                            "闘気消費なし / CD 8秒 / 半径3",
                             "周囲の敵へ11＋攻撃力×1.2のダメージ。"
                                     + "異なる敵1体につき闘気を1獲得する。",
                             false
                     ),
                     new Skill(
-                            "E", "未実装", "アクティブ",
-                            "未実装",
-                            "ウォーリアースキルは未実装です。",
-                            true
+                            "sweeping_slash", "Q", "薙ぎ払い", "Q候補",
+                            "闘気消費なし / CD 6秒 / 射程4.5 / 角度100°",
+                            "前方の扇状範囲へ14＋攻撃力×1.4のダメージ。",
+                            false
                     ),
                     new Skill(
-                            "R", "未実装", "アクティブ",
-                            "未実装",
-                            "ウォーリアースキルは未実装です。",
-                            true
+                            "warrior_charge", "E", "猛進", "E候補",
+                            "闘気消費なし / CD 10秒 / 最大7ブロック",
+                            "地上・空中を問わず視線方向へ軌跡を描いてダッシュし、通過した敵へ"
+                                    + "8＋攻撃力×0.8のダメージ。",
+                            false
                     ),
                     new Skill(
-                            "F", "未実装", "アルティメット",
-                            "未実装",
-                            "ウォーリアースキルは未実装です。",
-                            true
+                            "execution_leap", "E", "処刑跳躍", "E候補",
+                            "闘気消費なし / CD 9秒 / 射程10",
+                            "照準中の敵の近くへ跳躍し12＋攻撃力のダメージ。"
+                                    + "撃破時はクールダウンを解消。",
+                            false
                     ),
                     new Skill(
-                            "PASSIVE", "闘気", "パッシブ",
+                            "earth_shatter", "E", "大地砕き", "E候補",
+                            "闘気消費なし / CD 12秒 / 半径4",
+                            "周囲へ10＋攻撃力×0.9のダメージを与え、"
+                                    + "Mobを減速・打ち上げする。",
+                            false
+                    ),
+                    new Skill(
+                            "indomitable_spirit", "R", "不屈の闘志", "R候補",
+                            "闘気消費なし / CD 20秒 / 持続5秒",
+                            "被ダメージを25%軽減し、攻撃速度を25%上昇。"
+                                    + "命中時の闘気獲得が2になる。",
+                            false
+                    ),
+                    new Skill(
+                            "battlefield_aura", "R", "戦場の覇気", "R候補",
+                            "闘気消費なし / CD 18秒 / 半径5",
+                            "周囲のMobを減速し、敵1体につき吸収体力2、"
+                                    + "最大12を6秒間得る。",
+                            false
+                    ),
+                    new Skill(
+                            "endure", "R", "耐え抜く", "R候補",
+                            "闘気消費なし / CD 24秒 / 持続5秒",
+                            "受けるダメージの40%を終了時まで保留。"
+                                    + "与ダメージの50%分だけ保留量を減らす。",
+                            false
+                    ),
+                    new Skill(
+                            "fighting_spirit_release", "F", "闘気解放", "F候補",
+                            "闘気20以上 / 全闘気消費 / CD 35秒 / 半径5",
+                            "周囲へ10＋攻撃力＋消費闘気×0.25のダメージ。",
+                            false
+                    ),
+                    new Skill(
+                            "blood_battle", "F", "血戦", "F候補",
+                            "闘気20以上 / 全闘気消費 / CD 40秒",
+                            "攻撃速度上昇、通常攻撃の50%範囲追撃、"
+                                    + "命中ごとに装備中EのCDを0.5秒短縮。",
+                            false
+                    ),
+                    new Skill(
+                            "end_war_strike", "F", "終戦の一撃", "F候補",
+                            "闘気20以上 / 全闘気消費 / CD 45秒 / 詠唱0.8秒",
+                            "前方広範囲へ20＋攻撃力×2＋消費闘気×0.35。"
+                                    + "闘気100時は自身の減少HP率で威力上昇。",
+                            false
+                    ),
+                    new Skill(
+                            "warrior_passive", "PASSIVE", "闘気", "パッシブ",
                             "最大100 / 戦闘後10秒維持 / 毎秒5減少",
                             "闘気1につき与ダメージが0.1%増加。"
                                     + "闘気100中は有効な敵への1ヒットごとに体力を1.0回復する。",
@@ -192,9 +242,16 @@ public final class SkillCatalog {
     private SkillCatalog() {
     }
 
-    public static Skill findHudSkill(String className, int slotIndex, String slotName) {
+    public static Skill findHudSkill(
+            String className,
+            String skillId,
+            int slotIndex,
+            String slotName
+    ) {
+        Skill identified = findById(skillId);
+        if (identified != null) return identified;
         if (WARRIOR.name().equals(className) && slotIndex >= 0 && slotIndex < 4) {
-            return WARRIOR.skills().get(slotIndex);
+            return null;
         }
         if (SCOUT.name().equals(className) && slotIndex >= 0 && slotIndex < 4) {
             return SCOUT.skills().get(slotIndex);
@@ -238,6 +295,15 @@ public final class SkillCatalog {
         };
     }
 
+    public static Skill findById(String skillId) {
+        if (skillId == null || skillId.isBlank()) return null;
+        return GROUPS.stream()
+                .flatMap(group -> group.skills().stream())
+                .filter(skill -> skill.id().equals(skillId))
+                .findFirst()
+                .orElse(null);
+    }
+
     public record Group(
             String name,
             String description,
@@ -247,6 +313,7 @@ public final class SkillCatalog {
     }
 
     public record Skill(
+            String id,
             String input,
             String name,
             String category,
@@ -254,5 +321,15 @@ public final class SkillCatalog {
             String description,
             boolean unavailable
     ) {
+        public Skill(
+                String input,
+                String name,
+                String category,
+                String stats,
+                String description,
+                boolean unavailable
+        ) {
+            this("", input, name, category, stats, description, unavailable);
+        }
     }
 }
