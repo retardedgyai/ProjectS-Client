@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 
 public final class ProjectSMenuScreen extends Screen {
     private static final int PANEL_WIDTH = 248;
-    private static final int PANEL_HEIGHT = 212;
+    private static final int PANEL_HEIGHT = 240;
     private static final int ACCENT = 0xFF48C9E8;
 
     private final Screen parent;
@@ -54,7 +54,7 @@ public final class ProjectSMenuScreen extends Screen {
                         Component.literal("Dev Menu"),
                         button -> openDevMenu()
                 )
-                .bounds(buttonX, panelY + 142, buttonWidth, 22)
+                .bounds(buttonX, panelY + 170, buttonWidth, 22)
                 .tooltip(Tooltip.create(Component.literal(
                         "サーバーの開発メニューを開きます（projects.dev 権限が必要）")))
                 .build());
@@ -73,11 +73,20 @@ public final class ProjectSMenuScreen extends Screen {
                 && BalanceClientState.state().supported()
                 && BalanceClientState.state().permitted();
 
+        Button mobEditorButton = addRenderableWidget(Button.builder(
+                        Component.literal("Mob Editor"),
+                        button -> MobEditorClientState.requestOpen(this))
+                .bounds(buttonX, panelY + 142, buttonWidth, 22)
+                .tooltip(Tooltip.create(Component.literal(
+                        "Mob定義・外見・実描画プレビューを編集します")))
+                .build());
+        mobEditorButton.active = MobEditorClientState.supported();
+
         addRenderableWidget(Button.builder(
                         Component.literal("戻る"),
                         button -> onClose()
                 )
-                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 178, 84, 20)
+                .bounds(panelX + (PANEL_WIDTH - 84) / 2, panelY + 206, 84, 20)
                 .build());
     }
 

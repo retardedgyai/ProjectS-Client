@@ -54,6 +54,12 @@ public final class ProjectSClient implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(
                 TelegraphHelloPayload.TYPE,
                 TelegraphHelloPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                MobEditorRequestPayload.TYPE,
+                MobEditorRequestPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                MobEditorStatePayload.TYPE,
+                MobEditorStatePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
@@ -80,11 +86,17 @@ public final class ProjectSClient implements ClientModInitializer {
                         () -> TelegraphClientState.receive(
                                 payload.update()))
         );
+        ClientPlayNetworking.registerGlobalReceiver(
+                MobEditorStatePayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> MobEditorClientState.receive(payload.state()))
+        );
         ClientPlayConnectionEvents.DISCONNECT.register(
                 (handler, client) -> {
                     BalanceClientState.reset();
                     MonsterUiClientState.clear();
                     TelegraphClientState.clear();
+                    MobEditorClientState.reset();
                 });
         ClientPlayConnectionEvents.JOIN.register(
                 (handler, sender, client) ->
