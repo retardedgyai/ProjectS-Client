@@ -1,7 +1,24 @@
 package io.github.gyai.projects.client;
 
+import java.util.Locale;
+
 public final class MonsterUiVisuals {
+    private static final float NORMAL_SCALE = 0.0090f;
+    private static final float ELITE_SCALE = 0.0095f;
+    private static final float BOSS_SCALE = 0.0100f;
+    private static final int HEALTH_BAR_HEIGHT = 8;
+
     private MonsterUiVisuals() {
+    }
+
+    public static float scale(
+            MonsterUiPayload.MonsterRank rank
+    ) {
+        return switch (rank) {
+            case NORMAL -> NORMAL_SCALE;
+            case ELITE -> ELITE_SCALE;
+            case BOSS -> BOSS_SCALE;
+        };
     }
 
     public static int barWidth(
@@ -12,6 +29,96 @@ public final class MonsterUiVisuals {
             case ELITE -> 116;
             case BOSS -> 148;
         };
+    }
+
+    public static int healthBarHeight() {
+        return HEALTH_BAR_HEIGHT;
+    }
+
+    public static boolean hasValidMaximumHealth(double maximum) {
+        return Double.isFinite(maximum) && maximum > 0.0;
+    }
+
+    public static double clampHealth(
+            double health,
+            double maximum
+    ) {
+        if (!hasValidMaximumHealth(maximum)
+                || !Double.isFinite(health)) {
+            return 0.0;
+        }
+        return Math.clamp(health, 0.0, maximum);
+    }
+
+    public static float healthRatio(
+            double health,
+            double maximum
+    ) {
+        if (!hasValidMaximumHealth(maximum)) {
+            return 0.0f;
+        }
+        return clampRatio((float) (
+                clampHealth(health, maximum) / maximum));
+    }
+
+    public static float clampRatio(float ratio) {
+        if (!Float.isFinite(ratio)) {
+            return 0.0f;
+        }
+        return Math.clamp(ratio, 0.0f, 1.0f);
+    }
+
+    public static float fillWidth(
+            int barWidth,
+            float ratio
+    ) {
+        if (barWidth <= 0) {
+            return 0.0f;
+        }
+        return Math.clamp(
+                barWidth * clampRatio(ratio),
+                0.0f,
+                (float) barWidth);
+    }
+
+    public static String formatHealth(
+            double current,
+            double maximum
+    ) {
+        if (!hasValidMaximumHealth(maximum)) {
+            return "0 / 0";
+        }
+        double safeCurrent = clampHealth(current, maximum);
+        long currentValue = safeCurrent > 0.0
+                ? Math.max(1L, Math.round(safeCurrent))
+                : 0L;
+        long maximumValue = Math.max(1L, Math.round(maximum));
+        return String.format(
+                Locale.ROOT,
+                "%,d / %,d",
+                currentValue,
+                maximumValue);
+    }
+
+    public static int alphaForDistance(
+            double distance,
+            double displayRange
+    ) {
+        if (!Double.isFinite(distance)
+                || !Double.isFinite(displayRange)
+                || displayRange <= 0.0) {
+            return 0;
+        }
+        double safeDistance = Math.max(0.0, distance);
+        double fadeStartDistance = displayRange * 0.75;
+        if (safeDistance <= fadeStartDistance) {
+            return 255;
+        }
+        double ratio = 1.0
+                - (safeDistance - fadeStartDistance)
+                / (displayRange - fadeStartDistance);
+        return (int) Math.round(
+                Math.clamp(ratio, 0.0, 1.0) * 255.0);
     }
 
     public static int rankColor(

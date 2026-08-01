@@ -49,6 +49,11 @@ public final class ProjectSClient implements ClientModInitializer {
                 BalanceStatePayload.TYPE, BalanceStatePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(
                 MonsterUiPayload.TYPE, MonsterUiPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                TelegraphPayload.TYPE, TelegraphPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                TelegraphHelloPayload.TYPE,
+                TelegraphHelloPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
@@ -69,14 +74,31 @@ public final class ProjectSClient implements ClientModInitializer {
                         () -> MonsterUiClientState.receive(
                                 payload.update()))
         );
+        ClientPlayNetworking.registerGlobalReceiver(
+                TelegraphPayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> TelegraphClientState.receive(
+                                payload.update()))
+        );
         ClientPlayConnectionEvents.DISCONNECT.register(
                 (handler, client) -> {
                     BalanceClientState.reset();
                     MonsterUiClientState.clear();
+                    TelegraphClientState.clear();
                 });
+        ClientPlayConnectionEvents.JOIN.register(
+                (handler, sender, client) ->
+                        client.execute(() -> {
+                            if (ClientPlayNetworking.canSend(
+                                    TelegraphHelloPayload.TYPE)) {
+                                ClientPlayNetworking.send(
+                                        new TelegraphHelloPayload());
+                            }
+                        }));
         ProjectSSkillHud.register();
         ProjectSScreenManager.register();
         MonsterUiRenderer.register();
+        TelegraphRenderer.register();
 
         // Minecraftの移動キーWとの衝突を避けるため、初期値はQ/E/R/F。
         // 設定 > 操作設定 > キー割り当て から自由に変更可能。
@@ -88,6 +110,7 @@ public final class ProjectSClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             MonsterUiClientState.tick(client);
+            TelegraphClientState.tick(client);
             // チャット・インベントリ・各種画面を開いている間は誤発動させない。
             if (client.player == null || client.getConnection() == null || client.screen != null) {
                 releaseAttack();

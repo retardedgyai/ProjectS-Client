@@ -39,9 +39,27 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
     withSourcesJar()
     sourceCompatibility = JavaVersion.VERSION_25
     targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.register('telegraphClientTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.TelegraphClientLogicTest'
+    jvmArgs '-ea'
+}
+
+tasks.named('check') {
+    dependsOn telegraphClientTest
+}
+
+tasks.named('test') {
+    failOnNoDiscoveredTests = false
 }
 
 tasks.named('build') {

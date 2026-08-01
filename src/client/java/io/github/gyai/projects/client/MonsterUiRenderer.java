@@ -18,6 +18,12 @@ import java.util.Locale;
 
 public final class MonsterUiRenderer {
     private static final int FULL_LIGHT = 0x00F000F0;
+    private static final float BACKGROUND_Z = 0.000f;
+    private static final float TRAILING_Z = 0.001f;
+    private static final float PRIMARY_Z = 0.002f;
+    private static final float HEAL_FLASH_Z = 0.003f;
+    private static final float BORDER_Z = 0.004f;
+    private static final float TEXT_Z = 0.006f;
 
     private MonsterUiRenderer() {
     }
@@ -64,15 +70,20 @@ public final class MonsterUiRenderer {
                 continue;
             }
             tracked.updateAnimation(now);
-            int alpha = alphaForDistance(
+            int alpha = MonsterUiVisuals.alphaForDistance(
                     Math.sqrt(distanceSquared),
                     displayRange);
             if (alpha <= 0) {
                 continue;
             }
+            OrderedSubmitNodeCollector geometryCollector =
+                    context.submitNodeCollector().order(order++);
+            OrderedSubmitNodeCollector textCollector =
+                    context.submitNodeCollector().order(order++);
             renderMonster(
                     context,
-                    context.submitNodeCollector().order(order++),
+                    geometryCollector,
+                    textCollector,
                     client.font,
                     camera,
                     entity,
@@ -84,7 +95,8 @@ public final class MonsterUiRenderer {
 
     private static void renderMonster(
             LevelRenderContext context,
-            OrderedSubmitNodeCollector collector,
+            OrderedSubmitNodeCollector geometryCollector,
+            OrderedSubmitNodeCollector textCollector,
             Font font,
             CameraRenderState camera,
             Entity entity,
@@ -93,6 +105,10 @@ public final class MonsterUiRenderer {
             int alpha
     ) {
         MonsterUiPayload.Entry snapshot = tracked.snapshot();
+        double maximum = snapshot.maximumHealth();
+        if (!MonsterUiVisuals.hasValidMaximumHealth(maximum)) {
+            return;
+        }
         float partialTick = Minecraft.getInstance()
                 .getDeltaTracker()
                 .getGameTimeDeltaPartialTick(false);
@@ -105,12 +121,8 @@ public final class MonsterUiRenderer {
                         + entity.getBbHeight() + 0.55,
                 entityPosition.z - camera.pos.z);
         poseStack.mulPose(camera.orientation);
-        float scale = switch (snapshot.rank()) {
-            case NORMAL -> 0.0165f;
-            case ELITE -> 0.0175f;
-            case BOSS -> 0.0185f;
-        };
-        poseStack.scale(-scale, -scale, scale);
+        float scale = MonsterUiVisuals.scale(snapshot.rank());
+        poseStack.scale(scale, -scale, scale);
 
         int width = MonsterUiVisuals.barWidth(snapshot.rank());
         int y = 0;
@@ -126,7 +138,7 @@ public final class MonsterUiRenderer {
                     + "] "
                     + formatSeconds(hardRemaining);
             drawCenteredText(
-                    collector,
+                    textCollector,
                     poseStack,
                     font,
                     label,
@@ -139,7 +151,7 @@ public final class MonsterUiRenderer {
                     0.0f,
                     1.0f);
             submitBarGeometry(
-                    collector,
+                    geometryCollector,
                     poseStack,
                     width,
                     y,
@@ -155,7 +167,7 @@ public final class MonsterUiRenderer {
         }
 
         drawNameLine(
-                collector,
+                textCollector,
                 poseStack,
                 font,
                 snapshot,
@@ -163,21 +175,24 @@ public final class MonsterUiRenderer {
                 alpha);
         y += 11;
 
-        double maximum = snapshot.maximumHealth();
-        float displayedRatio = (float) Math.clamp(
-                tracked.displayedHealth() / maximum,
-                0.0,
-                1.0);
-        float trailingRatio = (float) Math.clamp(
-                tracked.trailingHealth() / maximum,
+        double displayedHealth = MonsterUiVisuals.clampHealth(
+                tracked.displayedHealth(), maximum);
+        double trailingHealth = Math.max(
+                displayedHealth,
+                MonsterUiVisuals.clampHealth(
+                        tracked.trailingHealth(), maximum));
+        float displayedRatio = MonsterUiVisuals.healthRatio(
+                displayedHealth, maximum);
+        float trailingRatio = Math.max(
                 displayedRatio,
-                1.0);
+                MonsterUiVisuals.healthRatio(
+                        trailingHealth, maximum));
         submitBarGeometry(
-                collector,
+                geometryCollector,
                 poseStack,
                 width,
                 y,
-                10,
+                MonsterUiVisuals.healthBarHeight(),
                 displayedRatio,
                 trailingRatio,
                 MonsterUiVisuals.withAlpha(
@@ -186,19 +201,19 @@ public final class MonsterUiRenderer {
                         0xFFFF8A72, alpha),
                 tracked.healFlash(now),
                 alpha);
-        String health = formatHealth(
-                tracked.displayedHealth(), maximum);
+        String health = MonsterUiVisuals.formatHealth(
+                displayedHealth, maximum);
         drawCenteredText(
-                collector,
+                textCollector,
                 poseStack,
                 font,
                 health,
-                y + 1,
+                y,
                 MonsterUiVisuals.withAlpha(
                         0xFFFFFFFF, alpha));
-        y += 13;
+        y += MonsterUiVisuals.healthBarHeight() + 3;
         drawStatuses(
-                collector,
+                textCollector,
                 poseStack,
                 font,
                 tracked,
@@ -324,8 +339,10 @@ public final class MonsterUiRenderer {
         float right = left + width;
         float top = y;
         float bottom = y + height;
-        float primaryRight = left + width * primaryRatio;
-        float trailingRight = left + width * trailingRatio;
+        float primaryRight = left + MonsterUiVisuals.fillWidth(
+                width, primaryRatio);
+        float trailingRight = left + MonsterUiVisuals.fillWidth(
+                width, Math.max(primaryRatio, trailingRatio));
         int background = MonsterUiVisuals.withAlpha(
                 0xD90A0D12, Math.round(alpha * 0.85f));
         int border = MonsterUiVisuals.withAlpha(
@@ -337,35 +354,35 @@ public final class MonsterUiRenderer {
                 RenderTypes.debugQuads(),
                 (pose, vertices) -> {
                     quad(pose, vertices, left, top, right, bottom,
-                            0.012f, background);
+                            BACKGROUND_Z, background);
                     if (trailingColor != 0
                             && trailingRight > left) {
                         quad(pose, vertices, left, top,
                                 trailingRight, bottom,
-                                0.010f, trailingColor);
+                                TRAILING_Z, trailingColor);
                     }
                     if (primaryRight > left) {
                         quad(pose, vertices, left, top,
                                 primaryRight, bottom,
-                                0.008f, primaryColor);
+                                PRIMARY_Z, primaryColor);
                     }
                     if (healFlash && primaryRight > left) {
                         quad(pose, vertices, left, top,
                                 primaryRight, top + 2,
-                                0.006f, flash);
+                                HEAL_FLASH_Z, flash);
                     }
                     quad(pose, vertices, left, top,
                             right, top + 1,
-                            0.004f, border);
+                            BORDER_Z, border);
                     quad(pose, vertices, left, bottom - 1,
                             right, bottom,
-                            0.004f, border);
+                            BORDER_Z, border);
                     quad(pose, vertices, left, top,
                             left + 1, bottom,
-                            0.004f, border);
+                            BORDER_Z, border);
                     quad(pose, vertices, right - 1, top,
                             right, bottom,
-                            0.004f, border);
+                            BORDER_Z, border);
                 });
     }
 
@@ -414,6 +431,8 @@ public final class MonsterUiRenderer {
     ) {
         FormattedCharSequence sequence =
                 Component.literal(text).getVisualOrderText();
+        poseStack.pushPose();
+        poseStack.translate(0.0f, 0.0f, TEXT_Z);
         collector.submitText(
                 poseStack,
                 x,
@@ -421,10 +440,11 @@ public final class MonsterUiRenderer {
                 sequence,
                 true,
                 Font.DisplayMode.NORMAL,
+                FULL_LIGHT,
                 color,
                 0,
-                FULL_LIGHT,
                 0);
+        poseStack.popPose();
     }
 
     private static String statusText(
@@ -440,33 +460,4 @@ public final class MonsterUiRenderer {
                 Locale.ROOT, "%.1fs", ticks / 20.0);
     }
 
-    private static String formatHealth(
-            double current,
-            double maximum
-    ) {
-        long currentValue = current > 0.0
-                ? Math.max(1L, Math.round(current))
-                : 0L;
-        long maximumValue = Math.max(1L, Math.round(maximum));
-        return String.format(
-                Locale.ROOT,
-                "%,d / %,d",
-                currentValue,
-                maximumValue);
-    }
-
-    private static int alphaForDistance(
-            double distance,
-            double displayRange
-    ) {
-        double fadeStartDistance = displayRange * 0.75;
-        if (distance <= fadeStartDistance) {
-            return 255;
-        }
-        double ratio = 1.0
-                - (distance - fadeStartDistance)
-                / (displayRange - fadeStartDistance);
-        return (int) Math.round(
-                Math.clamp(ratio, 0.0, 1.0) * 255.0);
-    }
 }
