@@ -54,8 +54,16 @@ tasks.register('telegraphClientTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('projectSUiLogicTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.ui.ProjectSUiLogicTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
+    dependsOn projectSUiLogicTest
 }
 
 tasks.named('test') {

@@ -7,9 +7,15 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.loader.api.FabricLoader;
+import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
+import io.github.gyai.projects.client.ui.render.ProjectSIconAtlas;
+import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import org.lwjgl.glfw.GLFW;
 
 public final class ProjectSClient implements ClientModInitializer {
@@ -28,6 +34,11 @@ public final class ProjectSClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        ProjectSThemeManager.initialize(FabricLoader.getInstance().getConfigDir());
+        ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(
+                Identifier.fromNamespaceAndPath(MOD_ID, "icon_atlas_cache"),
+                (ResourceManagerReloadListener) manager ->
+                        ProjectSIconAtlas.invalidateAvailability());
         PayloadTypeRegistry.serverboundPlay().register(SkillInputPayload.TYPE, SkillInputPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(HudStatePayload.TYPE, HudStatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(
