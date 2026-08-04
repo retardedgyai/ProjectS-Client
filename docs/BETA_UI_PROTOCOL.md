@@ -39,3 +39,7 @@ revision ordering, duplicate fields, bounded terminal results, unsupported
 servers, cleanup, and UI error/conflict behavior. The feature is not deployed;
 Minecraft is not launched. Rollback removes the additive payload registrations
 while retaining every existing fallback and channel.
+
+The byte-level compatibility gate is recorded in
+`docs/BETA_PROTOCOL_COMPATIBILITY.md`. The compatible integrated Server SHA is
+`3652747a9e1faedbd8e0b6323a248bbfa1a17ac2`.
