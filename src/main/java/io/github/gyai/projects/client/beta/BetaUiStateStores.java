@@ -20,9 +20,10 @@ public final class BetaUiStateStores {
         try {
             BetaDisplayDocument document = BetaDisplayDocumentCodec.decode(envelope.payload());
             if (envelope.kind() == BetaProtocol.Kind.COMMAND_RESULT) {
-                session.recordTerminal(envelope.requestOrSessionId(), document);
-                return true;
+                return session.recordTerminal(
+                        envelope.requestOrSessionId(), envelope.capability(), document);
             }
+            if (!session.acceptsState(envelope)) return false;
             return stores.get(envelope.capability()).receive(document);
         } catch (IOException exception) {
             stores.get(envelope.capability()).failure(exception.getMessage());

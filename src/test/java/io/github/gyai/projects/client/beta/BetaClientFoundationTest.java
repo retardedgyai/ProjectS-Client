@@ -17,6 +17,7 @@ public final class BetaClientFoundationTest {
         handshakeAndCommandAreDeterministic();
         malformedPacketsFailClosed();
         stateStoresAreRevisionedAndBounded();
+        sessionsRejectDelayedStateAndUnknownResults();
         uiModelsExposeLoadingErrorsAndConflicts();
         lifecycleAndCompatibilityFallbacksAreSafe();
     }
@@ -134,12 +135,61 @@ public final class BetaClientFoundationTest {
                 BetaProtocol.Capability.HUD, sessionId, duplicateMap)).value();
         assert !stores.receive(invalid, session);
         assert stores.hud().status() == BetaDisplayDocument.Status.ERROR;
+        BetaProtocol.Command pending = session.command(
+                BetaProtocol.Capability.HUD, 2, new byte[0]).orElseThrow();
         BetaProtocol.Envelope terminal = BetaProtocol.decodeState(statePacket(
-                5, BetaProtocol.Capability.HUD, UUID.randomUUID(),
+                5, BetaProtocol.Capability.HUD, pending.idempotencyRequestId(),
                 document(3, BetaDisplayDocument.Status.TERMINAL, "done", Map.of(), List.of())))
                 .value();
         assert stores.receive(terminal, session);
         assert session.terminal(terminal.requestOrSessionId()).orElseThrow().message().equals("done");
+        assert !stores.receive(terminal, session);
+        BetaProtocol.Envelope unknownTerminal = BetaProtocol.decodeState(statePacket(
+                5, BetaProtocol.Capability.HUD, UUID.randomUUID(),
+                document(4, BetaDisplayDocument.Status.TERMINAL, "unknown", Map.of(), List.of())))
+                .value();
+        assert !stores.receive(unknownTerminal, session);
+    }
+
+    private static void sessionsRejectDelayedStateAndUnknownResults() throws Exception {
+        UUID oldSession = UUID.randomUUID();
+        UUID newSession = UUID.randomUUID();
+        BetaClientConnectionState connection = new BetaClientConnectionState();
+        connection.accept(BetaProtocol.decodeAdvertisement(advertisement(
+                oldSession, 1,
+                List.of(new BetaProtocol.Descriptor(BetaProtocol.Capability.HUD, 1)))).value());
+        BetaProtocol.Envelope oldState = BetaProtocol.decodeState(statePacket(
+                BetaProtocol.Capability.HUD, oldSession,
+                document(5, BetaDisplayDocument.Status.READY, "old",
+                        Map.of("level", "5"), List.of()))).value();
+        assert connection.receive(oldState);
+        assert connection.stores().hud().revision() == 5;
+
+        connection.accept(BetaProtocol.decodeAdvertisement(advertisement(
+                newSession, 2,
+                List.of(new BetaProtocol.Descriptor(BetaProtocol.Capability.HUD, 1)))).value());
+        assert connection.stores().hud().status() == BetaDisplayDocument.Status.LOADING;
+        assert !connection.receive(oldState);
+        assert connection.stores().hud().status() == BetaDisplayDocument.Status.LOADING;
+        BetaProtocol.Envelope newState = BetaProtocol.decodeState(statePacket(
+                BetaProtocol.Capability.HUD, newSession,
+                document(1, BetaDisplayDocument.Status.READY, "new",
+                        Map.of("level", "1"), List.of()))).value();
+        assert connection.receive(newState);
+        assert connection.stores().hud().message().equals("new");
+
+        UUID firstRequest = connection.command(
+                BetaProtocol.Capability.HUD, 1, new byte[0]).orElseThrow()
+                .idempotencyRequestId();
+        for (int index = 0; index < 128; index++) {
+            connection.command(BetaProtocol.Capability.HUD, 1, new byte[0]).orElseThrow();
+        }
+        assert connection.session().pendingRequestCount() == 128;
+        BetaProtocol.Envelope evictedResult = BetaProtocol.decodeState(statePacket(
+                5, BetaProtocol.Capability.HUD, firstRequest,
+                document(2, BetaDisplayDocument.Status.TERMINAL, "evicted",
+                        Map.of(), List.of()))).value();
+        assert !connection.receive(evictedResult);
     }
 
     private static void uiModelsExposeLoadingErrorsAndConflicts() {

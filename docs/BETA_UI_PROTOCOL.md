@@ -28,6 +28,11 @@ probabilities or costs. Disconnect and reconnect clear all session, terminal,
 and display state. With no advertisement, the client remains in old-server
 fallback and the existing UI continues to run.
 
+State envelopes are accepted only when their session ID exactly matches the
+current advertisement. A new advertisement clears all prior UI state. Command
+request IDs are retained in a bounded pending set; only a pending ID can produce
+one terminal result, and unknown, evicted, or duplicate results are rejected.
+
 Automated tests cover constants shared with the server contract, deterministic
 handshake/command bytes, malformed/fuzz input, exact capability versions,
 revision ordering, duplicate fields, bounded terminal results, unsupported
