@@ -20,7 +20,8 @@ public record BetaDisplayDocument(
         message = bounded(message == null ? "" : message, "message");
         fields = Map.copyOf(fields == null ? Map.of() : fields);
         entries = List.copyOf(entries == null ? List.of() : entries);
-        if (fields.size() > 64 || entries.size() > 128) {
+        if (fields.size() > BetaProtocol.MAP_MAX_ENTRIES
+                || entries.size() > BetaProtocol.LIST_MAX_ENTRIES) {
             throw new IllegalArgumentException("Display state is oversized");
         }
         fields.forEach((key, value) -> {

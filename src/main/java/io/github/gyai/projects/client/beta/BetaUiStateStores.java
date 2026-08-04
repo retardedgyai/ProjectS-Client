@@ -19,6 +19,11 @@ public final class BetaUiStateStores {
                 || !session.supports(envelope.capability())) return false;
         try {
             BetaDisplayDocument document = BetaDisplayDocumentCodec.decode(envelope.payload());
+            if (envelope.capability() == BetaProtocol.Capability.MOB_EDITOR_V2
+                    && document.entries().size()
+                    > BetaProtocol.MOB_EDITOR_LIST_PAGE_MAX_ENTRIES) {
+                return false;
+            }
             if (envelope.kind() == BetaProtocol.Kind.COMMAND_RESULT) {
                 return session.recordTerminal(
                         envelope.requestOrSessionId(), envelope.capability(), document);

@@ -27,7 +27,9 @@ public final class BetaDisplayDocumentCodec {
             }
             String message = readString(input);
             int mapSize = input.readUnsignedShort();
-            if (mapSize > 64) throw new IOException("Display map is oversized");
+            if (mapSize > BetaProtocol.MAP_MAX_ENTRIES) {
+                throw new IOException("Display map is oversized");
+            }
             LinkedHashMap<String, String> fields = new LinkedHashMap<>();
             for (int index = 0; index < mapSize; index++) {
                 String key = readString(input);
@@ -36,7 +38,9 @@ public final class BetaDisplayDocumentCodec {
                 }
             }
             int listSize = input.readUnsignedShort();
-            if (listSize > 128) throw new IOException("Display list is oversized");
+            if (listSize > BetaProtocol.LIST_MAX_ENTRIES) {
+                throw new IOException("Display list is oversized");
+            }
             ArrayList<String> entries = new ArrayList<>(listSize);
             for (int index = 0; index < listSize; index++) entries.add(readString(input));
             if (input.available() != 0) throw new IOException("Trailing display bytes");

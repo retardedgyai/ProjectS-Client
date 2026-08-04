@@ -23,6 +23,8 @@ public final class BetaProtocol {
     public static final int STRING_MAX_BYTES = 256;
     public static final int ID_MAX_BYTES = 128;
     public static final int LIST_MAX_ENTRIES = 128;
+    public static final int MAP_MAX_ENTRIES = 64;
+    public static final int MOB_EDITOR_LIST_PAGE_MAX_ENTRIES = 50;
 
     public static final String CAPABILITIES_CHANNEL = "projects:beta_caps_v1";
     public static final String ACKNOWLEDGEMENT_CHANNEL = "projects:beta_ack_v1";
