@@ -61,9 +61,25 @@ tasks.register('projectSUiLogicTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('betaClientFoundationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.BetaClientFoundationTest'
+    jvmArgs '-ea'
+}
+
+tasks.register('betaProtocolCompatibilityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.BetaProtocolCompatibilityTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
+    dependsOn betaClientFoundationTest
+    dependsOn betaProtocolCompatibilityTest
 }
 
 tasks.named('test') {

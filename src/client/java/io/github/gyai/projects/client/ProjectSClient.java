@@ -10,6 +10,13 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.render.ProjectSIconAtlas;
+import io.github.gyai.projects.client.beta.BetaCapabilityAcknowledgementPayload;
+import io.github.gyai.projects.client.beta.BetaCapabilityAdvertisementPayload;
+import io.github.gyai.projects.client.beta.BetaClientRuntime;
+import io.github.gyai.projects.client.beta.BetaCommandPayload;
+import io.github.gyai.projects.client.beta.BetaProtocol;
+import io.github.gyai.projects.client.beta.BetaStatePayload;
+import io.github.gyai.projects.client.beta.ui.BetaHudOverlay;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -71,6 +78,18 @@ public final class ProjectSClient implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(
                 MobEditorStatePayload.TYPE,
                 MobEditorStatePayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                BetaCapabilityAdvertisementPayload.TYPE,
+                BetaCapabilityAdvertisementPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                BetaCapabilityAcknowledgementPayload.TYPE,
+                BetaCapabilityAcknowledgementPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                BetaStatePayload.TYPE,
+                BetaStatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                BetaCommandPayload.TYPE,
+                BetaCommandPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(
                 HudStatePayload.TYPE,
                 (payload, context) -> ProjectSSkillHud.update(payload.state())
@@ -102,12 +121,26 @@ public final class ProjectSClient implements ClientModInitializer {
                 (payload, context) -> context.client().execute(
                         () -> MobEditorClientState.receive(payload.state()))
         );
+        ClientPlayNetworking.registerGlobalReceiver(
+                BetaCapabilityAdvertisementPayload.TYPE,
+                (payload, context) -> context.client().execute(() ->
+                        BetaClientRuntime.receive(payload).ifPresent(acknowledgement -> {
+                            if (ClientPlayNetworking.canSend(
+                                    BetaCapabilityAcknowledgementPayload.TYPE)) {
+                                ClientPlayNetworking.send(acknowledgement);
+                            }
+                        })));
+        ClientPlayNetworking.registerGlobalReceiver(
+                BetaStatePayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> BetaClientRuntime.receive(payload)));
         ClientPlayConnectionEvents.DISCONNECT.register(
                 (handler, client) -> {
                     BalanceClientState.reset();
                     MonsterUiClientState.clear();
                     TelegraphClientState.clear();
                     MobEditorClientState.reset();
+                    BetaClientRuntime.clear();
                 });
         ClientPlayConnectionEvents.JOIN.register(
                 (handler, sender, client) ->
@@ -119,6 +152,7 @@ public final class ProjectSClient implements ClientModInitializer {
                             }
                         }));
         ProjectSSkillHud.register();
+        BetaHudOverlay.register();
         ProjectSScreenManager.register();
         MonsterUiRenderer.register();
         TelegraphRenderer.register();
@@ -188,6 +222,19 @@ public final class ProjectSClient implements ClientModInitializer {
             return true;
         }
         return false;
+    }
+
+    public static boolean sendBetaCommand(
+            BetaProtocol.Capability capability,
+            long targetRevision,
+            byte[] payload
+    ) {
+        var command = BetaClientRuntime.command(capability, targetRevision, payload);
+        if (command.isEmpty() || !ClientPlayNetworking.canSend(BetaCommandPayload.TYPE)) {
+            return false;
+        }
+        ClientPlayNetworking.send(command.orElseThrow());
+        return true;
     }
 
     public static String resolveInputLabel(String input) {
