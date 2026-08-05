@@ -3,8 +3,10 @@ package io.github.gyai.projects.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import io.github.gyai.projects.client.beta.BetaClientRuntime;
+import io.github.gyai.projects.client.beta.ElementStatePayloadV1;
+import io.github.gyai.projects.client.beta.ElementStatusRenderRoute;
 import io.github.gyai.projects.client.beta.FireStatusClientStore;
-import io.github.gyai.projects.client.beta.FireStatusRenderRoute;
+import io.github.gyai.projects.client.beta.IceStatusClientStore;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -52,8 +54,9 @@ public final class MonsterUiRenderer {
             return;
         }
         long now = System.nanoTime();
-        FireStatusClientStore.View fire = BetaClientRuntime.fireStatus(
-                System.currentTimeMillis()).orElse(null);
+        long nowMillis = System.currentTimeMillis();
+        FireStatusClientStore.View fire = BetaClientRuntime.fireStatus(nowMillis).orElse(null);
+        IceStatusClientStore.View ice = BetaClientRuntime.iceStatus(nowMillis).orElse(null);
         int order = 20_000;
         for (MonsterUiClientState.TrackedMonster tracked
                 : MonsterUiClientState.trackedMonsters()) {
@@ -98,13 +101,15 @@ public final class MonsterUiRenderer {
                     tracked,
                     now,
                     alpha,
-                    fire);
+                    fire,
+                    ice);
         }
-        renderStandaloneFire(
+        renderStandaloneElements(
                 context,
                 client,
                 camera,
                 fire,
+                ice,
                 order);
     }
 
@@ -118,7 +123,8 @@ public final class MonsterUiRenderer {
             MonsterUiClientState.TrackedMonster tracked,
             long now,
             int alpha,
-            FireStatusClientStore.View fire
+            FireStatusClientStore.View fire,
+            IceStatusClientStore.View ice
     ) {
         MonsterUiPayload.Entry snapshot = tracked.snapshot();
         double maximum = snapshot.maximumHealth();
@@ -228,6 +234,11 @@ public final class MonsterUiRenderer {
                     fire, y, alpha);
             y += 11;
         }
+        if (ice != null
+                && ice.targetNetworkId() == tracked.networkEntityId()) {
+            y += drawIceStatus(geometryCollector, textCollector, poseStack, font,
+                    ice, y, alpha);
+        }
         drawStatuses(
                 textCollector,
                 poseStack,
@@ -239,17 +250,24 @@ public final class MonsterUiRenderer {
         poseStack.popPose();
     }
 
-    private static void renderStandaloneFire(
+    private static void renderStandaloneElements(
             LevelRenderContext context,
             Minecraft client,
             CameraRenderState camera,
             FireStatusClientStore.View fire,
+            IceStatusClientStore.View ice,
             int order
     ) {
-        if (fire == null || client.level == null) {
+        if (client.level == null) {
             return;
         }
-        int targetNetworkId = fire.targetNetworkId();
+        ElementStatusRenderRoute.Selection selection = ElementStatusRenderRoute.select(
+                fire == null ? null : new ElementStatusRenderRoute.Status(
+                        fire.targetNetworkId(), fire.stateRevision()),
+                ice == null ? null : new ElementStatusRenderRoute.Status(
+                        ice.targetNetworkId(), ice.stateRevision())).orElse(null);
+        if (selection == null) return;
+        int targetNetworkId = selection.targetNetworkId();
         Entity entity = client.level.getEntity(targetNetworkId);
         if (entity == null || entity.isRemoved() || !entity.isAlive()) {
             BetaClientRuntime.clearElementTarget(targetNetworkId);
@@ -264,10 +282,10 @@ public final class MonsterUiRenderer {
         boolean selectedTarget = client.hitResult
                 instanceof EntityHitResult entityHit
                 && entityHit.getEntity().getId() == targetNetworkId;
-        FireStatusRenderRoute.Route route = FireStatusRenderRoute.decide(
-                new FireStatusRenderRoute.Input(
+        ElementStatusRenderRoute.Route route = ElementStatusRenderRoute.decide(
+                new ElementStatusRenderRoute.Input(
                         targetNetworkId,
-                        fire.fireStacks(),
+                        true,
                         false,
                         entity.getId(),
                         true,
@@ -279,7 +297,7 @@ public final class MonsterUiRenderer {
                         selectedTarget,
                         MonsterUiClientState.tracksNetworkEntity(
                                 targetNetworkId)));
-        if (route != FireStatusRenderRoute.Route.STANDALONE) {
+        if (route != ElementStatusRenderRoute.Route.STANDALONE) {
             return;
         }
         int alpha = MonsterUiVisuals.alphaForDistance(
@@ -301,14 +319,18 @@ public final class MonsterUiRenderer {
                 entity.getBbHeight() + STANDALONE_NAME_CLEARANCE,
                 MonsterUiVisuals.scale(
                         MonsterUiPayload.MonsterRank.NORMAL));
-        drawFireStatus(
-                geometryCollector,
-                textCollector,
-                poseStack,
-                client.font,
-                fire,
-                0,
-                alpha);
+        int y = 0;
+        if (selection.fireVisible() && fire != null
+                && fire.targetNetworkId() == targetNetworkId) {
+            drawFireStatus(geometryCollector, textCollector, poseStack,
+                    client.font, fire, y, alpha);
+            y += 11;
+        }
+        if (selection.iceVisible() && ice != null
+                && ice.targetNetworkId() == targetNetworkId) {
+            drawIceStatus(geometryCollector, textCollector, poseStack,
+                    client.font, ice, y, alpha);
+        }
         poseStack.popPose();
     }
 
@@ -381,6 +403,136 @@ public final class MonsterUiRenderer {
         drawText(text, poseStack, font, stack, left + 11, y + 1,
                 fire.warning() ? MonsterUiVisuals.withAlpha(0xFFFF8A72, alpha)
                         : MonsterUiVisuals.withAlpha(0xFFFFD7B0, alpha));
+    }
+
+    private static int drawIceStatus(
+            OrderedSubmitNodeCollector geometry,
+            OrderedSubmitNodeCollector text,
+            PoseStack poseStack,
+            Font font,
+            IceStatusClientStore.View ice,
+            int y,
+            int alpha
+    ) {
+        boolean coldVisible = ice.coldGauge() > 0.0
+                || ice.coldStage() != ElementStatePayloadV1.ColdStage.NONE
+                || ice.frozen();
+        String immunity = ice.immunityRemainingMillis() > 0
+                ? String.format(Locale.ROOT, "IMMUNE %.1fs",
+                ice.immunityRemainingMillis() / 1_000.0)
+                : "";
+        String primary = coldVisible ? iceLabel(ice) : immunity;
+        boolean secondLine = coldVisible && !immunity.isEmpty();
+        int primaryWidth = font.width(primary);
+        float left = -(8 + 3 + primaryWidth) / 2.0f;
+        float iconLeft = left;
+        float iconTop = y;
+        int iconColor = iceColor(ice, alpha, !coldVisible);
+        int accentColor = MonsterUiVisuals.withAlpha(
+                ice.freezeFlash() ? 0xFFFFFFFF : 0xFFB8F7FF, alpha);
+
+        geometry.submitCustomGeometry(poseStack, RenderTypes.debugQuads(),
+                (pose, vertices) -> {
+                    // ProjectS procedural snowflake; no vanilla freeze texture or overlay.
+                    quad(pose, vertices, iconLeft + 3, iconTop,
+                            iconLeft + 5, iconTop + 8, PRIMARY_Z, iconColor);
+                    quad(pose, vertices, iconLeft, iconTop + 3,
+                            iconLeft + 8, iconTop + 5, PRIMARY_Z, iconColor);
+                    quad(pose, vertices, iconLeft + 1, iconTop + 1,
+                            iconLeft + 3, iconTop + 3, PRIMARY_Z, iconColor);
+                    quad(pose, vertices, iconLeft + 5, iconTop + 1,
+                            iconLeft + 7, iconTop + 3, PRIMARY_Z, iconColor);
+                    quad(pose, vertices, iconLeft + 1, iconTop + 5,
+                            iconLeft + 3, iconTop + 7, PRIMARY_Z, iconColor);
+                    quad(pose, vertices, iconLeft + 5, iconTop + 5,
+                            iconLeft + 7, iconTop + 7, PRIMARY_Z, iconColor);
+                    if (ice.stagePulse()) {
+                        quad(pose, vertices, iconLeft + 3, iconTop - 1,
+                                iconLeft + 5, iconTop, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft + 3, iconTop + 8,
+                                iconLeft + 5, iconTop + 9, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft - 1, iconTop + 3,
+                                iconLeft, iconTop + 5, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft + 8, iconTop + 3,
+                                iconLeft + 9, iconTop + 5, BORDER_Z, accentColor);
+                    }
+                    if (ice.freezeFlash()) {
+                        quad(pose, vertices, iconLeft - 1, iconTop - 1,
+                                iconLeft + 9, iconTop, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft - 1, iconTop + 8,
+                                iconLeft + 9, iconTop + 9, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft - 1, iconTop,
+                                iconLeft, iconTop + 9, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft + 8, iconTop,
+                                iconLeft + 9, iconTop + 9, BORDER_Z, accentColor);
+                    }
+                    if (ice.shatterFlash()) {
+                        // Short procedural crack rays derived from Frozen -> immunity.
+                        quad(pose, vertices, iconLeft + 8, iconTop + 2,
+                                iconLeft + 11, iconTop + 3, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft + 10, iconTop + 2,
+                                iconLeft + 11, iconTop + 5, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft - 3, iconTop + 6,
+                                iconLeft, iconTop + 7, BORDER_Z, accentColor);
+                        quad(pose, vertices, iconLeft - 3, iconTop + 4,
+                                iconLeft - 2, iconTop + 7, BORDER_Z, accentColor);
+                    }
+                });
+        drawText(text, poseStack, font, primary, left + 11, y + 1,
+                iceTextColor(ice, alpha, !coldVisible));
+        if (secondLine) {
+            drawCenteredText(text, poseStack, font, immunity, y + 10,
+                    MonsterUiVisuals.withAlpha(0xFF9BB5C9, alpha));
+            return 20;
+        }
+        return 11;
+    }
+
+    private static String iceLabel(IceStatusClientStore.View ice) {
+        String gauge = formatColdGauge(ice.coldGauge());
+        if (ice.frozen() || ice.coldStage() == ElementStatePayloadV1.ColdStage.FROZEN) {
+            return "FROZEN " + gauge;
+        }
+        return switch (ice.coldStage()) {
+            case NONE -> "Cold " + gauge;
+            case CHILLED -> "Cold I " + gauge;
+            case DEEP_CHILL -> "Cold II " + gauge;
+            case FROZEN -> "FROZEN " + gauge;
+        };
+    }
+
+    private static String formatColdGauge(double gauge) {
+        if (gauge <= Long.MAX_VALUE && gauge == Math.rint(gauge)) {
+            return Long.toString((long) gauge);
+        }
+        return String.format(Locale.ROOT, "%.1f", gauge);
+    }
+
+    private static int iceColor(
+            IceStatusClientStore.View ice, int alpha, boolean immunityOnly
+    ) {
+        int color;
+        if (immunityOnly) color = 0xFF8199AD;
+        else if (ice.freezeFlash()) color = 0xFFFFFFFF;
+        else if (ice.frozen()) color = 0xFFE9FFFF;
+        else if (ice.stagePulse()) color = 0xFFF4FFFF;
+        else color = switch (ice.coldStage()) {
+            case NONE -> 0xFFB8D3E8;
+            case CHILLED -> 0xFFAADFFF;
+            case DEEP_CHILL -> 0xFF51E6FF;
+            case FROZEN -> 0xFFE9FFFF;
+        };
+        return MonsterUiVisuals.withAlpha(color, alpha);
+    }
+
+    private static int iceTextColor(
+            IceStatusClientStore.View ice, int alpha, boolean immunityOnly
+    ) {
+        int color = immunityOnly ? 0xFF9BB5C9
+                : ice.frozen() ? 0xFFF2FFFF
+                : ice.coldStage() == ElementStatePayloadV1.ColdStage.DEEP_CHILL
+                ? 0xFF8AF0FF : 0xFFC9E8FF;
+        return MonsterUiVisuals.withAlpha(color, alpha);
     }
 
     private static void drawNameLine(

@@ -96,6 +96,20 @@ tasks.register('fireStatusRenderRouteTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('iceStatusClientStoreTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.IceStatusClientStoreTest'
+    jvmArgs '-ea'
+}
+
+tasks.register('elementStatusRenderRouteTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.ElementStatusRenderRouteTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
@@ -104,6 +118,8 @@ tasks.named('check') {
     dependsOn betaClientRuntimeLifecycleTest
     dependsOn fireStatusClientStoreTest
     dependsOn fireStatusRenderRouteTest
+    dependsOn iceStatusClientStoreTest
+    dependsOn elementStatusRenderRouteTest
 }
 
 tasks.named('test') {

@@ -1,29 +1,23 @@
 package io.github.gyai.projects.client.beta;
 
-/** Pure selection between the tracked Monster UI and standalone Fire routes. */
+/** Compatibility facade for the shared Elements status route. */
 public final class FireStatusRenderRoute {
     private FireStatusRenderRoute() {
     }
 
     public static Route decide(Input input) {
-        if (input == null
-                || input.guiHidden()
-                || input.snapshotExpired()
-                || input.fireStacks() <= 0
-                || !input.entityPresent()
-                || input.entityRemoved()
-                || !input.entityAlive()
-                || !input.sameDimension()
-                || !input.withinDisplayRange()
-                || input.targetNetworkId() != input.entityNetworkId()) {
-            return Route.HIDDEN;
-        }
-        if (input.tracked()) {
-            return Route.TRACKED;
-        }
-        return input.selectedTarget()
-                ? Route.STANDALONE
-                : Route.HIDDEN;
+        if (input == null) return Route.HIDDEN;
+        return switch (ElementStatusRenderRoute.decide(
+                new ElementStatusRenderRoute.Input(
+                        input.targetNetworkId(), input.fireStacks() > 0,
+                        input.snapshotExpired(), input.entityNetworkId(),
+                        input.entityPresent(), input.entityRemoved(), input.entityAlive(),
+                        input.sameDimension(), input.withinDisplayRange(), input.guiHidden(),
+                        input.selectedTarget(), input.tracked()))) {
+            case TRACKED -> Route.TRACKED;
+            case STANDALONE -> Route.STANDALONE;
+            case HIDDEN -> Route.HIDDEN;
+        };
     }
 
     public enum Route {
