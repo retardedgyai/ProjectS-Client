@@ -109,6 +109,15 @@ public final class MonsterUiClientState {
         return MONSTERS.values();
     }
 
+    public static boolean tracksNetworkEntity(int networkEntityId) {
+        for (TrackedMonster tracked : MONSTERS.values()) {
+            if (tracked.networkEntityId() == networkEntityId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static void clear() {
         MONSTERS.clear();
         lastSequence = Long.MIN_VALUE;

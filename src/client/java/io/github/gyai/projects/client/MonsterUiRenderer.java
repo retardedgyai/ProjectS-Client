@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import io.github.gyai.projects.client.beta.BetaClientRuntime;
 import io.github.gyai.projects.client.beta.FireStatusClientStore;
+import io.github.gyai.projects.client.beta.FireStatusRenderRoute;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -14,6 +15,7 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Locale;
@@ -26,6 +28,8 @@ public final class MonsterUiRenderer {
     private static final float HEAL_FLASH_Z = 0.003f;
     private static final float BORDER_Z = 0.004f;
     private static final float TEXT_Z = 0.006f;
+    private static final double STANDALONE_DISPLAY_RANGE = 64.0;
+    private static final double STANDALONE_NAME_CLEARANCE = 0.80;
 
     private MonsterUiRenderer() {
     }
@@ -48,6 +52,8 @@ public final class MonsterUiRenderer {
             return;
         }
         long now = System.nanoTime();
+        FireStatusClientStore.View fire = BetaClientRuntime.fireStatus(
+                System.currentTimeMillis()).orElse(null);
         int order = 20_000;
         for (MonsterUiClientState.TrackedMonster tracked
                 : MonsterUiClientState.trackedMonsters()) {
@@ -91,8 +97,15 @@ public final class MonsterUiRenderer {
                     entity,
                     tracked,
                     now,
-                    alpha);
+                    alpha,
+                    fire);
         }
+        renderStandaloneFire(
+                context,
+                client,
+                camera,
+                fire,
+                order);
     }
 
     private static void renderMonster(
@@ -104,27 +117,22 @@ public final class MonsterUiRenderer {
             Entity entity,
             MonsterUiClientState.TrackedMonster tracked,
             long now,
-            int alpha
+            int alpha,
+            FireStatusClientStore.View fire
     ) {
         MonsterUiPayload.Entry snapshot = tracked.snapshot();
         double maximum = snapshot.maximumHealth();
         if (!MonsterUiVisuals.hasValidMaximumHealth(maximum)) {
             return;
         }
-        float partialTick = Minecraft.getInstance()
-                .getDeltaTracker()
-                .getGameTimeDeltaPartialTick(false);
-        Vec3 entityPosition = entity.getPosition(partialTick);
         PoseStack poseStack = context.poseStack();
         poseStack.pushPose();
-        poseStack.translate(
-                entityPosition.x - camera.pos.x,
-                entityPosition.y - camera.pos.y
-                        + entity.getBbHeight() + 0.55,
-                entityPosition.z - camera.pos.z);
-        poseStack.mulPose(camera.orientation);
-        float scale = MonsterUiVisuals.scale(snapshot.rank());
-        poseStack.scale(scale, -scale, scale);
+        positionEntityBillboard(
+                poseStack,
+                camera,
+                entity,
+                entity.getBbHeight() + 0.55,
+                MonsterUiVisuals.scale(snapshot.rank()));
 
         int width = MonsterUiVisuals.barWidth(snapshot.rank());
         int y = 0;
@@ -214,11 +222,10 @@ public final class MonsterUiRenderer {
                 MonsterUiVisuals.withAlpha(
                         0xFFFFFFFF, alpha));
         y += MonsterUiVisuals.healthBarHeight() + 3;
-        var fire = BetaClientRuntime.fireStatus(System.currentTimeMillis())
-                .filter(value -> value.targetNetworkId() == tracked.networkEntityId());
-        if (fire.isPresent()) {
+        if (fire != null
+                && fire.targetNetworkId() == tracked.networkEntityId()) {
             drawFireStatus(geometryCollector, textCollector, poseStack, font,
-                    fire.orElseThrow(), y, alpha);
+                    fire, y, alpha);
             y += 11;
         }
         drawStatuses(
@@ -230,6 +237,98 @@ public final class MonsterUiRenderer {
                 y,
                 alpha);
         poseStack.popPose();
+    }
+
+    private static void renderStandaloneFire(
+            LevelRenderContext context,
+            Minecraft client,
+            CameraRenderState camera,
+            FireStatusClientStore.View fire,
+            int order
+    ) {
+        if (fire == null || client.level == null) {
+            return;
+        }
+        int targetNetworkId = fire.targetNetworkId();
+        Entity entity = client.level.getEntity(targetNetworkId);
+        if (entity == null || entity.isRemoved() || !entity.isAlive()) {
+            BetaClientRuntime.clearElementTarget(targetNetworkId);
+            return;
+        }
+        double distanceSquared = entity.distanceToSqr(camera.pos);
+        boolean withinDisplayRange = distanceSquared
+                <= STANDALONE_DISPLAY_RANGE * STANDALONE_DISPLAY_RANGE;
+        boolean visibleInFrustum = camera.cullFrustum == null
+                || camera.cullFrustum.isVisible(
+                        entity.getBoundingBox().inflate(0.5));
+        boolean selectedTarget = client.hitResult
+                instanceof EntityHitResult entityHit
+                && entityHit.getEntity().getId() == targetNetworkId;
+        FireStatusRenderRoute.Route route = FireStatusRenderRoute.decide(
+                new FireStatusRenderRoute.Input(
+                        targetNetworkId,
+                        fire.fireStacks(),
+                        false,
+                        entity.getId(),
+                        true,
+                        entity.isRemoved(),
+                        entity.isAlive(),
+                        true,
+                        withinDisplayRange && visibleInFrustum,
+                        client.options.hideGui,
+                        selectedTarget,
+                        MonsterUiClientState.tracksNetworkEntity(
+                                targetNetworkId)));
+        if (route != FireStatusRenderRoute.Route.STANDALONE) {
+            return;
+        }
+        int alpha = MonsterUiVisuals.alphaForDistance(
+                Math.sqrt(distanceSquared),
+                STANDALONE_DISPLAY_RANGE);
+        if (alpha <= 0) {
+            return;
+        }
+        OrderedSubmitNodeCollector geometryCollector =
+                context.submitNodeCollector().order(order);
+        OrderedSubmitNodeCollector textCollector =
+                context.submitNodeCollector().order(order + 1);
+        PoseStack poseStack = context.poseStack();
+        poseStack.pushPose();
+        positionEntityBillboard(
+                poseStack,
+                camera,
+                entity,
+                entity.getBbHeight() + STANDALONE_NAME_CLEARANCE,
+                MonsterUiVisuals.scale(
+                        MonsterUiPayload.MonsterRank.NORMAL));
+        drawFireStatus(
+                geometryCollector,
+                textCollector,
+                poseStack,
+                client.font,
+                fire,
+                0,
+                alpha);
+        poseStack.popPose();
+    }
+
+    private static void positionEntityBillboard(
+            PoseStack poseStack,
+            CameraRenderState camera,
+            Entity entity,
+            double heightOffset,
+            float scale
+    ) {
+        float partialTick = Minecraft.getInstance()
+                .getDeltaTracker()
+                .getGameTimeDeltaPartialTick(false);
+        Vec3 entityPosition = entity.getPosition(partialTick);
+        poseStack.translate(
+                entityPosition.x - camera.pos.x,
+                entityPosition.y - camera.pos.y + heightOffset,
+                entityPosition.z - camera.pos.z);
+        poseStack.mulPose(camera.orientation);
+        poseStack.scale(scale, -scale, scale);
     }
 
     private static void drawFireStatus(

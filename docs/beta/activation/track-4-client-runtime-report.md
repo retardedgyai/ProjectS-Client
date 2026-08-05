@@ -29,11 +29,15 @@ protocol-v1 map carries the additional fields without changing the channel,
 aggregate version, capability ID, codec, manifest, or golden-vector meaning.
 
 For the matching target network entity, a ProjectS-drawn flame silhouette,
-stack count, and fractional progress strip render immediately below the
-Monster/Training Dummy HP bar. Stack increases pulse briefly, stack 9 uses a
-warning color, a new Server detonation pulse revision flashes once, and the
-post-detonation Server snapshot displays the residual three stacks. Decay is a
-subdued color/down marker. No Minecraft fire overlay is used.
+stack count, and fractional progress strip render immediately below a tracked
+Monster HP bar. An untracked, live target entity instead gets the same status
+as a standalone billboard above its bounding box while it is the current
+crosshair entity target. Network entity ID routing prevents both paths from
+rendering at once; no dummy name or UUID convention and no fake HP bar are
+used. Stack increases pulse briefly, stack 9 uses a warning color, a new Server
+detonation pulse revision flashes once, and the post-detonation Server snapshot
+displays the residual three stacks. Decay is a subdued color/down marker. No
+Minecraft fire overlay is used.
 
 Zero stacks are hidden. Stale/equal revisions and old-session packets are
 rejected; equal packets cannot restart a flash. Target replacement, expiry,
