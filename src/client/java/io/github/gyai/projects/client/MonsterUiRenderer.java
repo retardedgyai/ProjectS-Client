@@ -2,6 +2,8 @@ package io.github.gyai.projects.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import io.github.gyai.projects.client.beta.BetaClientRuntime;
+import io.github.gyai.projects.client.beta.FireStatusClientStore;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -212,6 +214,13 @@ public final class MonsterUiRenderer {
                 MonsterUiVisuals.withAlpha(
                         0xFFFFFFFF, alpha));
         y += MonsterUiVisuals.healthBarHeight() + 3;
+        var fire = BetaClientRuntime.fireStatus(System.currentTimeMillis())
+                .filter(value -> value.targetNetworkId() == tracked.networkEntityId());
+        if (fire.isPresent()) {
+            drawFireStatus(geometryCollector, textCollector, poseStack, font,
+                    fire.orElseThrow(), y, alpha);
+            y += 11;
+        }
         drawStatuses(
                 textCollector,
                 poseStack,
@@ -221,6 +230,58 @@ public final class MonsterUiRenderer {
                 y,
                 alpha);
         poseStack.popPose();
+    }
+
+    private static void drawFireStatus(
+            OrderedSubmitNodeCollector geometry,
+            OrderedSubmitNodeCollector text,
+            PoseStack poseStack,
+            Font font,
+            FireStatusClientStore.View fire,
+            int y,
+            int alpha
+    ) {
+        int iconColor = fire.detonationFlash() ? 0xFFFFF1A8
+                : fire.warning() ? 0xFFFF493D
+                : fire.stackPulse() ? 0xFFFFB347 : 0xFFFF7A32;
+        if (fire.decayActive() && !fire.detonationFlash()) iconColor = 0xFFD66B3A;
+        iconColor = MonsterUiVisuals.withAlpha(iconColor, alpha);
+        int progressColor = MonsterUiVisuals.withAlpha(0xFFFFB347, alpha);
+        String stack = Integer.toString(fire.fireStacks())
+                + (fire.decayActive() ? " ↓" : "");
+        int stackWidth = font.width(stack);
+        float left = -(8 + 3 + stackWidth) / 2.0f;
+        float iconLeft = left;
+        float iconTop = y;
+        float fillRight = iconLeft + 8.0f * (float) fire.fractionalProgress();
+        int finalIconColor = iconColor;
+        geometry.submitCustomGeometry(poseStack, RenderTypes.debugQuads(),
+                (pose, vertices) -> {
+                    // ProjectS flame silhouette; this is not Minecraft's fire overlay.
+                    quad(pose, vertices, iconLeft + 3, iconTop,
+                            iconLeft + 6, iconTop + 3, PRIMARY_Z, finalIconColor);
+                    quad(pose, vertices, iconLeft + 1, iconTop + 3,
+                            iconLeft + 7, iconTop + 8, PRIMARY_Z, finalIconColor);
+                    quad(pose, vertices, iconLeft + 3, iconTop + 5,
+                            iconLeft + 5, iconTop + 8, HEAL_FLASH_Z,
+                            MonsterUiVisuals.withAlpha(0xFFFFD37A, alpha));
+                    quad(pose, vertices, iconLeft, iconTop + 9,
+                            iconLeft + 8, iconTop + 10, BACKGROUND_Z,
+                            MonsterUiVisuals.withAlpha(0xFF30140E, alpha));
+                    if (fillRight > iconLeft) {
+                        quad(pose, vertices, iconLeft, iconTop + 9,
+                                fillRight, iconTop + 10, PRIMARY_Z, progressColor);
+                    }
+                    if (fire.detonationFlash()) {
+                        quad(pose, vertices, iconLeft - 1, iconTop - 1,
+                                iconLeft + 9, iconTop, BORDER_Z, finalIconColor);
+                        quad(pose, vertices, iconLeft - 1, iconTop + 9,
+                                iconLeft + 9, iconTop + 10, BORDER_Z, finalIconColor);
+                    }
+                });
+        drawText(text, poseStack, font, stack, left + 11, y + 1,
+                fire.warning() ? MonsterUiVisuals.withAlpha(0xFFFF8A72, alpha)
+                        : MonsterUiVisuals.withAlpha(0xFFFFD7B0, alpha));
     }
 
     private static void drawNameLine(

@@ -82,12 +82,20 @@ tasks.register('betaClientRuntimeLifecycleTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('fireStatusClientStoreTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.FireStatusClientStoreTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
     dependsOn betaClientFoundationTest
     dependsOn betaProtocolCompatibilityTest
     dependsOn betaClientRuntimeLifecycleTest
+    dependsOn fireStatusClientStoreTest
 }
 
 tasks.named('test') {
