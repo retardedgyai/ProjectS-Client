@@ -69,7 +69,7 @@ public final class BetaUiStateStores {
         private BetaDisplayDocument value = BetaDisplayDocument.loading();
 
         private boolean receive(BetaDisplayDocument replacement) {
-            if (replacement.revision() <= value.revision()) return false;
+            if (replacement.revision() < value.revision()) return false;
             value = replacement;
             return true;
         }

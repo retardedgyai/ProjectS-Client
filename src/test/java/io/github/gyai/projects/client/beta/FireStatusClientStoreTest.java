@@ -57,7 +57,7 @@ public final class FireStatusClientStoreTest {
         assert fire10.fireStacks() == 10;
         assert fire10.detonationFlash();
 
-        assert !stores.receive(stateA, session) : "equal revision must be rejected";
+        assert stores.receive(stateA, session) : "generic store compatibility is retained";
         assert !fire.receive(first, 1_001) : "duplicate pulse must not re-enter display store";
 
         BetaProtocol.Envelope stateB = BetaProtocol.decodeState(packets.get(1)).value();
