@@ -5,7 +5,8 @@ import java.util.Optional;
 public final class BetaClientRuntime {
     private static final BetaClientLifecycleAdapter LIFECYCLE =
             new BetaClientLifecycleAdapter(new BetaClientConnectionState());
-    private static final FireStatusClientStore FIRE = new FireStatusClientStore();
+    private static final ElementStatusClientStores ELEMENTS =
+            new ElementStatusClientStores();
 
     private BetaClientRuntime() {
     }
@@ -14,7 +15,7 @@ public final class BetaClientRuntime {
             BetaCapabilityAdvertisementPayload payload
     ) {
         if (payload == null || !payload.decoded().successful()) return Optional.empty();
-        FIRE.clear();
+        ELEMENTS.clear();
         return LIFECYCLE.accept(payload.decoded().value())
                 .map(BetaCapabilityAcknowledgementPayload::new);
     }
@@ -25,7 +26,7 @@ public final class BetaClientRuntime {
         if (!LIFECYCLE.receive(envelope)) return false;
         if (envelope.kind() == BetaProtocol.Kind.STATE
                 && envelope.capability() == BetaProtocol.Capability.ELEMENTS) {
-            FIRE.receive(LIFECYCLE.stores().elements(), System.currentTimeMillis());
+            ELEMENTS.receive(LIFECYCLE.stores().elements(), System.currentTimeMillis());
         }
         return true;
     }
@@ -48,18 +49,22 @@ public final class BetaClientRuntime {
         return LIFECYCLE.stores();
     }
 
-    public static void beginConnection() { FIRE.clear(); LIFECYCLE.beginConnection(); }
+    public static void beginConnection() { ELEMENTS.clear(); LIFECYCLE.beginConnection(); }
 
-    public static void disconnect() { FIRE.clear(); LIFECYCLE.disconnect(); }
+    public static void disconnect() { ELEMENTS.clear(); LIFECYCLE.disconnect(); }
 
     public static Optional<FireStatusClientStore.View> fireStatus(long nowMillis) {
-        return FIRE.view(nowMillis);
+        return ELEMENTS.fireView(nowMillis);
     }
 
-    public static void clearElementTarget() { FIRE.clear(); }
+    public static Optional<IceStatusClientStore.View> iceStatus(long nowMillis) {
+        return ELEMENTS.iceView(nowMillis);
+    }
+
+    public static void clearElementTarget() { ELEMENTS.clear(); }
 
     public static void clearElementTarget(int targetNetworkId) {
-        FIRE.clearTarget(targetNetworkId);
+        ELEMENTS.clearTarget(targetNetworkId);
     }
 
     public static BetaClientLifecycleAdapter.State lifecycleState() {

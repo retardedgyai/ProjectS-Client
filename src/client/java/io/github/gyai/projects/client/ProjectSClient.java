@@ -16,6 +16,7 @@ import io.github.gyai.projects.client.beta.BetaClientRuntime;
 import io.github.gyai.projects.client.beta.BetaCommandPayload;
 import io.github.gyai.projects.client.beta.BetaProtocol;
 import io.github.gyai.projects.client.beta.BetaStatePayload;
+import io.github.gyai.projects.client.beta.ClientWorldLifecycleGuard;
 import io.github.gyai.projects.client.beta.ui.BetaHudOverlay;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.minecraft.client.KeyMapping;
@@ -38,6 +39,8 @@ public final class ProjectSClient implements ClientModInitializer {
     private static KeyMapping ultimate;
     private static KeyMapping dodge;
     private boolean attackHeld;
+    private static final ClientWorldLifecycleGuard WORLD_LIFECYCLE =
+            new ClientWorldLifecycleGuard();
 
     @Override
     public void onInitializeClient() {
@@ -141,11 +144,13 @@ public final class ProjectSClient implements ClientModInitializer {
                     TelegraphClientState.clear();
                     MobEditorClientState.reset();
                     BetaClientRuntime.disconnect();
+                    WORLD_LIFECYCLE.reset();
                 });
         ClientPlayConnectionEvents.JOIN.register(
                 (handler, sender, client) ->
                         client.execute(() -> {
                             BetaClientRuntime.beginConnection();
+                            WORLD_LIFECYCLE.reset();
                             if (ClientPlayNetworking.canSend(
                                     TelegraphHelloPayload.TYPE)) {
                                 ClientPlayNetworking.send(
@@ -167,6 +172,10 @@ public final class ProjectSClient implements ClientModInitializer {
         dodge = register("key.projects_client.dodge", GLFW.GLFW_KEY_LEFT_SHIFT);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            Object worldIdentity = client.level == null ? null : client.level.dimension();
+            if (WORLD_LIFECYCLE.observe(worldIdentity)) {
+                BetaClientRuntime.clearElementTarget();
+            }
             MonsterUiClientState.tick(client);
             TelegraphClientState.tick(client);
             // チャット・インベントリ・各種画面を開いている間は誤発動させない。

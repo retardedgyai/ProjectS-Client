@@ -98,7 +98,9 @@ public final class MonsterUiClientState {
             if (entity == null) {
                 continue;
             }
-            if (!entity.getUUID().equals(tracked.entityId())) {
+            if (entity.isRemoved()
+                    || !entity.isAlive()
+                    || !entity.getUUID().equals(tracked.entityId())) {
                 BetaClientRuntime.clearElementTarget(tracked.networkEntityId());
                 iterator.remove();
             }
