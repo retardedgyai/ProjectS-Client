@@ -3,8 +3,8 @@ package io.github.gyai.projects.client.beta;
 import java.util.Optional;
 
 public final class BetaClientRuntime {
-    private static final BetaClientConnectionState CONNECTION =
-            new BetaClientConnectionState();
+    private static final BetaClientLifecycleAdapter LIFECYCLE =
+            new BetaClientLifecycleAdapter(new BetaClientConnectionState());
 
     private BetaClientRuntime() {
     }
@@ -13,13 +13,13 @@ public final class BetaClientRuntime {
             BetaCapabilityAdvertisementPayload payload
     ) {
         if (payload == null || !payload.decoded().successful()) return Optional.empty();
-        byte[] acknowledgement = CONNECTION.accept(payload.decoded().value());
-        return Optional.of(new BetaCapabilityAcknowledgementPayload(acknowledgement));
+        return LIFECYCLE.accept(payload.decoded().value())
+                .map(BetaCapabilityAcknowledgementPayload::new);
     }
 
     public static boolean receive(BetaStatePayload payload) {
         return payload != null && payload.decoded().successful()
-                && CONNECTION.receive(payload.decoded().value());
+                && LIFECYCLE.receive(payload.decoded().value());
     }
 
     public static Optional<BetaCommandPayload> command(
@@ -27,20 +27,28 @@ public final class BetaClientRuntime {
             long targetRevision,
             byte[] payload
     ) {
-        return CONNECTION.command(capability, targetRevision, payload)
+        return LIFECYCLE.command(capability, targetRevision, payload)
                 .map(BetaProtocol::encodeCommand)
                 .map(BetaCommandPayload::new);
     }
 
     public static BetaClientSession session() {
-        return CONNECTION.session();
+        return LIFECYCLE.session();
     }
 
     public static BetaUiStateStores stores() {
-        return CONNECTION.stores();
+        return LIFECYCLE.stores();
+    }
+
+    public static void beginConnection() { LIFECYCLE.beginConnection(); }
+
+    public static void disconnect() { LIFECYCLE.disconnect(); }
+
+    public static BetaClientLifecycleAdapter.State lifecycleState() {
+        return LIFECYCLE.state();
     }
 
     public static void clear() {
-        CONNECTION.clear();
+        LIFECYCLE.disconnect();
     }
 }
