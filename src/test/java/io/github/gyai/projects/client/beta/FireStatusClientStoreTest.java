@@ -3,15 +3,92 @@ package io.github.gyai.projects.client.beta;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class FireStatusClientStoreTest {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         zeroIsHiddenAndOneThroughNineAreDisplayed();
         stackPulseAndDetonationFlashAreServerDrivenAndNotDuplicated();
         staleTargetAndExpiryAreCleared();
         oldServerAndUnsupportedStateClearDisplay();
         malformedAndNonFiniteSnapshotsFailClosed();
+        serverPublisherPacketsDecodeThroughClientStores();
         System.out.println("FireStatusClientStoreTest passed");
+    }
+
+    private static void serverPublisherPacketsDecodeThroughClientStores() throws Exception {
+        String fixture = Files.readString(Path.of(
+                "src/test/resources/protocol/fire-elements-server-publisher-v1.json"),
+                StandardCharsets.UTF_8);
+        assert fixture.contains("6c20b167bb43063490e8bcac189dd5af8e343a87");
+        assert fixture.contains("projects:elements");
+        UUID sessionId = UUID.fromString("30000000-0000-0000-0000-000000000003");
+        Matcher matcher = Pattern.compile("\\\"packetBase64\\\": \\\"([^\\\"]+)\\\"")
+                .matcher(fixture);
+        ArrayList<byte[]> packets = new ArrayList<>();
+        while (matcher.find()) packets.add(Base64.getDecoder().decode(matcher.group(1)));
+        assert packets.size() == 2;
+
+        BetaClientSession session = new BetaClientSession();
+        session.accept(new BetaProtocol.Advertisement(sessionId, 1, List.of(
+                new BetaProtocol.Descriptor(BetaProtocol.Capability.ELEMENTS, 1))));
+        BetaUiStateStores stores = new BetaUiStateStores();
+        FireStatusClientStore fire = new FireStatusClientStore();
+
+        BetaProtocol.Envelope stateA = BetaProtocol.decodeState(packets.get(0)).value();
+        assert stateA != null && stateA.kind() == BetaProtocol.Kind.STATE;
+        assert stateA.capability() == BetaProtocol.Capability.ELEMENTS;
+        assert stateA.payloadVersion() == 1;
+        assert stateA.requestOrSessionId().equals(sessionId);
+        assert stores.receive(stateA, session);
+        BetaDisplayDocument first = stores.elements();
+        assert first.revision() == 100;
+        assert first.fields().get("target-network-id").equals("77");
+        assert first.fields().get("fire-stacks").equals("10");
+        assert fire.receive(first, 1_000);
+        var fire10 = fire.view(1_000).orElseThrow();
+        assert fire10.fireStacks() == 10;
+        assert fire10.detonationFlash();
+
+        assert !stores.receive(stateA, session) : "equal revision must be rejected";
+        assert !fire.receive(first, 1_001) : "duplicate pulse must not re-enter display store";
+
+        BetaProtocol.Envelope stateB = BetaProtocol.decodeState(packets.get(1)).value();
+        assert stateB != null && stores.receive(stateB, session);
+        BetaDisplayDocument second = stores.elements();
+        assert second.revision() == 101;
+        assert second.fields().get("fire-stacks").equals("3");
+        assert second.fields().get("fire-progress-ratio").equals("0.5");
+        assert second.fields().get("fire-decay-active").equals("true");
+        assert fire.receive(second, 1_010);
+        assert fire.view(1_010).orElseThrow().fireStacks() == 3;
+        assert !fire.view(1_261).orElseThrow().detonationFlash();
+
+        assert !stores.receive(stateA, session) : "stale state must be rejected";
+        BetaProtocol.Envelope oldSession = new BetaProtocol.Envelope(
+                BetaProtocol.Kind.STATE, BetaProtocol.Capability.ELEMENTS, 1,
+                UUID.randomUUID(), stateB.payload());
+        assert !stores.receive(oldSession, session);
+        fire.clearTarget(77);
+        assert fire.view(1_020).isEmpty();
+        assert fire.receive(second, 1_021);
+        assert fire.view(2_000_000).isEmpty() : "snapshot expiry must clear";
+        session.clear(); stores.clear(); fire.clear();
+        assert session.oldServerFallback();
+        assert fire.view(1_022).isEmpty();
+
+        String source = Files.readString(Path.of(
+                "src/main/java/io/github/gyai/projects/client/beta/FireStatusClientStore.java"));
+        assert !source.contains("damage(");
+        assert !source.contains("send(");
+        assert !source.contains("fireStacks++");
     }
 
     private static void zeroIsHiddenAndOneThroughNineAreDisplayed() {

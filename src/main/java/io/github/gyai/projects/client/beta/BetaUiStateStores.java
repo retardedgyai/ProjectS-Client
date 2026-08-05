@@ -17,8 +17,15 @@ public final class BetaUiStateStores {
     public synchronized boolean receive(BetaProtocol.Envelope envelope, BetaClientSession session) {
         if (envelope == null || session == null || envelope.payloadVersion() != 1
                 || !session.supports(envelope.capability())) return false;
+        if (envelope.kind() == BetaProtocol.Kind.STATE && !session.acceptsState(envelope)) {
+            return false;
+        }
         try {
-            BetaDisplayDocument document = BetaDisplayDocumentCodec.decode(envelope.payload());
+            BetaDisplayDocument document = envelope.kind() == BetaProtocol.Kind.STATE
+                    && envelope.capability() == BetaProtocol.Capability.ELEMENTS
+                    && envelope.payload().length == ElementStatePayloadV1.WIRE_BYTES
+                    ? ElementStatePayloadV1.decode(envelope.payload()).toDisplayDocument()
+                    : BetaDisplayDocumentCodec.decode(envelope.payload());
             if (envelope.capability() == BetaProtocol.Capability.MOB_EDITOR_V2
                     && document.entries().size()
                     > BetaProtocol.MOB_EDITOR_LIST_PAGE_MAX_ENTRIES) {
@@ -28,7 +35,6 @@ public final class BetaUiStateStores {
                 return session.recordTerminal(
                         envelope.requestOrSessionId(), envelope.capability(), document);
             }
-            if (!session.acceptsState(envelope)) return false;
             return stores.get(envelope.capability()).receive(document);
         } catch (IOException exception) {
             stores.get(envelope.capability()).failure(exception.getMessage());
@@ -63,7 +69,7 @@ public final class BetaUiStateStores {
         private BetaDisplayDocument value = BetaDisplayDocument.loading();
 
         private boolean receive(BetaDisplayDocument replacement) {
-            if (replacement.revision() < value.revision()) return false;
+            if (replacement.revision() <= value.revision()) return false;
             value = replacement;
             return true;
         }

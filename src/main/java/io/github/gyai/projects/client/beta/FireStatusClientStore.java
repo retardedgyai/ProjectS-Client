@@ -38,9 +38,8 @@ public final class FireStatusClientStore {
                 && replacement.fireStacks() > snapshot.fireStacks()) {
             stackPulseUntilMillis = safeAdd(receivedAtMillis, STACK_PULSE_MILLIS);
         }
-        if (snapshot != null && !targetChanged
-                && replacement.detonationPulseRevision()
-                > snapshot.detonationPulseRevision()) {
+        if (!targetChanged && replacement.detonationPulseRevision()
+                > (snapshot == null ? 0 : snapshot.detonationPulseRevision())) {
             detonationFlashUntilMillis = safeAdd(
                     receivedAtMillis, DETONATION_FLASH_MILLIS);
         }

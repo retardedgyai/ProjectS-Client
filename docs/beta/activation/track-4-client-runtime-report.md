@@ -16,8 +16,8 @@ state.
 
 The UI is not authoritative, no channel or payload ID was changed, automatic
 connection was not enabled, and no Server/Client deployment or launch belongs
-to this Track. The compatible Server integration base is
-`2a991aa6ba3afc0b59ebd1f0874c00b195ec84cd`; the Client base is
+to this Track. The compatible Server integration SHA is
+`6c20b167bb43063490e8bcac189dd5af8e343a87`; the Client base is
 `27f2c5e4b535dee19c860b711cac9662606540ff`.
 
 ## Fire status display addendum
@@ -40,3 +40,20 @@ rejected; equal packets cannot restart a flash. Target replacement, expiry,
 world/target UI clear, new advertisement, and disconnect clear the display.
 Without a Server advertisement, the existing old-server fallback remains
 hidden.
+
+## Server publisher compatibility fixture
+
+`fire-elements-server-publisher-v1.json` contains two byte-for-byte packets
+captured from the integrated Server `ElementSnapshotProtocolPublisher` at
+`6c20b167bb43063490e8bcac189dd5af8e343a87`. State A carries Fire 10 and a new
+detonation pulse revision. State B advances the state revision, carries the
+post-detonation Fire 3 residual state, and retains the pulse revision. The
+Client test decodes the outer protocol envelope and the independent Elements
+v1 payload decoder, passes the result through the existing revisioned state
+store and Fire display projection, and verifies exactly-once flash behavior.
+
+The canonical manifest SHA-256 remains
+`49d37172e5f5a95207876b328b52bf0d0a1a04aa6ec9a6f2e9f0bca8aa8937ac` and the
+golden vectors SHA-256 remains
+`dde5a2e27d46e548b03abbc4f991c7542cf4b4f2d2a0a08c69bf292b3ec3bf1a`.
+No deployment or Client launch was performed.
