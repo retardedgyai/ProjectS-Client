@@ -17,7 +17,7 @@ public final class BetaUiViewModels {
 
     public static Panel elementTargetOverlay(BetaDisplayDocument state) {
         return panel("Elements", state,
-                List.of("target-network-id", "fire-gauge", "fire-stacks", "cold-gauge",
+                List.of("target-network-id", "cold-gauge",
                         "cold-stage", "frozen", "refreeze-immunity"));
     }
 

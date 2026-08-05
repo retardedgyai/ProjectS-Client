@@ -36,7 +36,10 @@ public final class BetaHudOverlay {
         }
         if (BetaClientRuntime.session().supports(BetaProtocol.Capability.ELEMENTS)) {
             BetaDisplayDocument elements = BetaClientRuntime.stores().elements();
-            if (elements.status() != BetaDisplayDocument.Status.LOADING) {
+            if (elements.status() != BetaDisplayDocument.Status.LOADING
+                    && elements.fields().keySet().stream().anyMatch(
+                    key -> key.startsWith("cold-") || key.equals("frozen")
+                            || key.equals("refreeze-immunity"))) {
                 BetaUiViewModels.Panel panel = BetaUiViewModels.elementTargetOverlay(elements);
                 int x = Math.max(12, (graphics.guiWidth() - 220) / 2);
                 renderPanel(graphics, x, 12, panel, 4);

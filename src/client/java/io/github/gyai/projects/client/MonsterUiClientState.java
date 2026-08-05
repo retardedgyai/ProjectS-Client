@@ -1,5 +1,6 @@
 package io.github.gyai.projects.client;
 
+import io.github.gyai.projects.client.beta.BetaClientRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.Entity;
@@ -36,6 +37,7 @@ public final class MonsterUiClientState {
         if (update.operation()
                 == MonsterUiPayload.Operation.CLEAR) {
             MONSTERS.clear();
+            BetaClientRuntime.clearElementTarget();
             return;
         }
         if (update.operation()
@@ -47,6 +49,7 @@ public final class MonsterUiClientState {
                         && current.networkEntityId()
                         == entry.networkEntityId()) {
                     MONSTERS.remove(entry.entityId());
+                    BetaClientRuntime.clearElementTarget(entry.networkEntityId());
                 }
             }
             return;
@@ -86,6 +89,7 @@ public final class MonsterUiClientState {
         while (iterator.hasNext()) {
             TrackedMonster tracked = iterator.next();
             if (now - tracked.receivedAtNanos() > STALE_NANOS) {
+                BetaClientRuntime.clearElementTarget(tracked.networkEntityId());
                 iterator.remove();
                 continue;
             }
@@ -95,6 +99,7 @@ public final class MonsterUiClientState {
                 continue;
             }
             if (!entity.getUUID().equals(tracked.entityId())) {
+                BetaClientRuntime.clearElementTarget(tracked.networkEntityId());
                 iterator.remove();
             }
         }
@@ -108,6 +113,7 @@ public final class MonsterUiClientState {
         MONSTERS.clear();
         lastSequence = Long.MIN_VALUE;
         dimension = null;
+        BetaClientRuntime.clearElementTarget();
     }
 
     public static final class TrackedMonster {

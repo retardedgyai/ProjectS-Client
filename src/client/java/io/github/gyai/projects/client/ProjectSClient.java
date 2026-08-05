@@ -140,11 +140,12 @@ public final class ProjectSClient implements ClientModInitializer {
                     MonsterUiClientState.clear();
                     TelegraphClientState.clear();
                     MobEditorClientState.reset();
-                    BetaClientRuntime.clear();
+                    BetaClientRuntime.disconnect();
                 });
         ClientPlayConnectionEvents.JOIN.register(
                 (handler, sender, client) ->
                         client.execute(() -> {
+                            BetaClientRuntime.beginConnection();
                             if (ClientPlayNetworking.canSend(
                                     TelegraphHelloPayload.TYPE)) {
                                 ClientPlayNetworking.send(

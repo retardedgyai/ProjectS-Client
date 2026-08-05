@@ -67,6 +67,11 @@ public record BetaDisplayDocument(
         return key.endsWith("-gauge") || key.endsWith("-ratio")
                 || key.equals("quality") || key.equals("xp") || key.equals("level")
                 || key.equals("item-level") || key.equals("fire-stacks")
-                || key.equals("refreeze-immunity");
+                || key.equals("refreeze-immunity")
+                || key.equals("target-network-id") || key.equals("state-revision")
+                || key.equals("fire-threshold")
+                || key.equals("fire-decay-starts-in-millis")
+                || key.equals("fire-detonation-pulse-revision")
+                || key.equals("snapshot-expires-at-millis");
     }
 }
