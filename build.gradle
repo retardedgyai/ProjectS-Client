@@ -110,6 +110,13 @@ tasks.register('elementStatusRenderRouteTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('clientWorldLifecycleGuardTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.beta.ClientWorldLifecycleGuardTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
@@ -120,6 +127,7 @@ tasks.named('check') {
     dependsOn fireStatusRenderRouteTest
     dependsOn iceStatusClientStoreTest
     dependsOn elementStatusRenderRouteTest
+    dependsOn clientWorldLifecycleGuardTest
 }
 
 tasks.named('test') {
