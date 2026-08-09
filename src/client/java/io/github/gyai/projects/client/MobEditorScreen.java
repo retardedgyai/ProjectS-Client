@@ -1,9 +1,7 @@
 package io.github.gyai.projects.client;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -20,15 +18,26 @@ import java.util.Map;
 import io.github.gyai.projects.client.ui.mobeditor.AbilityEditorModel;
 import io.github.gyai.projects.client.ui.mobeditor.AbilityUndoBaseline;
 import io.github.gyai.projects.client.ui.mobeditor.DuplicateRequestCorrelation;
+import io.github.gyai.projects.client.ui.mobeditor.AbilityAssignmentPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorActionBar;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorLayout;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorTabBar;
+import io.github.gyai.projects.client.ui.mobeditor.MobListPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobPreviewPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobPropertyPanel;
+import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
+import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.screen.ProjectSThemedScreen;
+import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
+import io.github.gyai.projects.client.ui.widget.ProjectSButton;
+import io.github.gyai.projects.client.ui.widget.ProjectSCard;
+import io.github.gyai.projects.client.ui.widget.ProjectSTextField;
+import io.github.gyai.projects.client.ui.widget.ProjectSToast;
 
-public final class MobEditorScreen extends Screen {
+public final class MobEditorScreen extends ProjectSThemedScreen {
     private enum Tab { BASIC, STATS, AI, ABILITIES, APPEARANCE, TEST }
     private enum View { FRONT, BACK, LEFT, RIGHT, FREE, HEAD }
 
-    private static final int LEFT_WIDTH = 190;
-    private static final int CENTER_WIDTH = 390;
-    private static final int TOP = 34;
-    private static final int BOTTOM = 38;
     private static final int ABILITY_ASSIGNED_PAGE_SIZE = 5;
     private static final int ABILITY_AVAILABLE_PAGE_SIZE = 4;
 
@@ -74,6 +83,11 @@ public final class MobEditorScreen extends Screen {
     private final AbilityUndoBaseline abilityUndoBaseline = new AbilityUndoBaseline();
     private int assignedAbilityOffset;
     private int availableAbilityOffset;
+    private MobEditorLayout layout;
+    private int propertyScroll;
+    private String lastToastMessage = "";
+    private MobPropertyPanel propertyPanel;
+    private boolean buildingProperty;
 
     public MobEditorScreen(Screen parent) {
         super(Component.literal("Mob Editor"));
@@ -86,57 +100,71 @@ public final class MobEditorScreen extends Screen {
         if (knownRevision != syncedStateRevision) syncState();
         fields.clear();
         labels.clear();
-        int centerX = LEFT_WIDTH + 14;
-        search = addRenderableWidget(new EditBox(
-                font, 10, 48, 112, 20,
-                Component.literal("検索")));
+        layout = MobEditorLayout.of(width, height);
+        propertyPanel = new MobPropertyPanel(layout.property());
+        propertyScroll = MobPropertyPanel.normalizeScroll(propertyScroll,
+                layout.property().height(), propertyContentHeight());
+        MobEditorLayout.Bounds mobList = layout.mobList();
+        MobEditorLayout.Bounds actionBar = layout.actionBar();
+        int sideX = mobList.x() + 4;
+        search = addRenderableWidget(new ProjectSTextField(
+                font, sideX, mobList.y() + 28, mobList.width() - 66, 20,
+                Component.empty(), Component.literal("検索")));
         search.setValue(searchQuery);
         search.setResponder(value -> {
             searchQuery = value;
             refreshWidgets();
         });
-        button(126, 48, "検索", () -> {
+        button(mobList.right() - 58, mobList.y() + 28, "検索", () -> {
             requestMobPage(0);
         }, 54);
-        newId = addRenderableWidget(new EditBox(
-                font, 10, height - 66, 112, 20,
-                Component.literal("新規ID")));
-        addRenderableWidget(Button.builder(Component.literal("作成"), button -> {
+        int sideActionY = MobListPanel.actionY(mobList);
+        int createY = MobListPanel.createY(mobList);
+        newId = addRenderableWidget(new ProjectSTextField(
+                font, sideX, createY, mobList.width() - 66, 20,
+                Component.empty(), Component.literal("新規ID")));
+        addThemedButton(mobList.right() - 58, createY, 54, "作成", () -> {
             String id = newId.getValue().trim();
             if (!id.isBlank()) createDraft(id);
-        }).bounds(126, height - 66, 54, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("複製"), button -> duplicate())
-                .bounds(10, height - 42, 54, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("再読込"), button ->
-                reloadDefinitions()).bounds(68, height - 42, 54, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("戻る"), button -> onClose())
-                .bounds(126, height - 42, 54, 20).build());
-        button(10, height - 90, "頁◀", () -> {
+        });
+        for (int index = 0; index < 3; index++) {
+            MobEditorLayout.Bounds bounds = MobListPanel.actionBounds(mobList, index);
+            if (index == 0) addThemedButton(bounds.x(), bounds.y(), bounds.width(), "複製", this::duplicate);
+            if (index == 1) addThemedButton(bounds.x(), bounds.y(), bounds.width(), "再読込", this::reloadDefinitions);
+            if (index == 2) addThemedButton(bounds.x(), bounds.y(), bounds.width(), "戻る", this::onClose);
+        }
+        int pagerY = MobListPanel.pagerY(mobList);
+        MobEditorLayout.Bounds pager0 = MobListPanel.pagerBounds(mobList, pagerY, 0);
+        button(pager0.x(), pager0.y(), "頁◀", () -> {
             requestMobPage(Math.max(0, mobPage - 1));
-        }, 38);
-        button(50, height - 90, "▲", () -> {
+        }, pager0.width());
+        MobEditorLayout.Bounds pager1 = MobListPanel.pagerBounds(mobList, pagerY, 1);
+        button(pager1.x(), pager1.y(), "▲", () -> {
             mobListOffset = Math.max(0, mobListOffset - 1);
             refreshWidgets();
-        }, 38);
-        button(92, height - 90, "▼", () -> {
+        }, pager1.width());
+        MobEditorLayout.Bounds pager2 = MobListPanel.pagerBounds(mobList, pagerY, 2);
+        button(pager2.x(), pager2.y(), "▼", () -> {
             int maximum = Math.max(0,
                     MobEditorClientState.state().mobs().size() - visibleMobCount());
             mobListOffset = Math.min(maximum, mobListOffset + 1);
             refreshWidgets();
-        }, 38);
-        button(132, height - 90, "頁▶", () -> {
+        }, pager2.width());
+        MobEditorLayout.Bounds pager3 = MobListPanel.pagerBounds(mobList, pagerY, 3);
+        button(pager3.x(), pager3.y(), "頁▶", () -> {
             requestMobPage(mobPage + 1);
-        }, 48);
+        }, pager3.width());
 
-        int tabWidth = 61;
-        for (Tab value : Tab.values()) {
-            addRenderableWidget(Button.builder(
-                    Component.literal(tabName(value)), button -> switchTab(value))
-                    .bounds(centerX + value.ordinal() * (tabWidth + 3), 38,
-                            tabWidth, 20).build());
+        addRenderableWidget(MobEditorTabBar.create(layout.tabs(),
+                Arrays.stream(Tab.values()).map(MobEditorScreen::tabName).toList(),
+                tab.ordinal(), selected -> switchTab(Tab.values()[selected])));
+        if (draft != null) {
+            buildingProperty = true;
+            buildTab(layout.property().x(), layout.property().y() - propertyScroll);
+            buildingProperty = false;
+            propertyPanel.applyVisibility();
         }
-        if (draft != null) buildTab(centerX, 70);
-        buildBottom(centerX);
+        buildBottom(actionBar.x());
         buildPreviewButtons();
         buildMobButtons();
     }
@@ -156,20 +184,19 @@ public final class MobEditorScreen extends Screen {
                 Math.max(0, filtered.size() - visible));
         List<MobEditorStatePayload.MobSummary> mobs = filtered.stream()
                 .skip(mobListOffset).limit(visible).toList();
-        int y = 76;
+        int y = MobListPanel.listViewport(layout.mobList()).y();
         for (var mob : mobs) {
             String marker = mob.enabled() ? "" : "[無効] ";
-            addRenderableWidget(Button.builder(
-                    Component.literal(marker + "[" + mob.category() + "] "
-                            + mob.displayName() + " (" + mob.id() + ")"), button ->
-                            selectMob(mob.id()))
-                    .bounds(10, y, LEFT_WIDTH - 20, 22).build());
-            y += 25;
+            MobEditorLayout.Bounds rowBounds = MobListPanel.rowBounds(layout.mobList(), y);
+            addRenderableWidget(MobListPanel.row(rowBounds,
+                    marker + "[" + mob.category() + "] " + mob.displayName() + " (" + mob.id() + ")",
+                    true, draft != null && draft.id().equals(mob.id()), () -> selectMob(mob.id())));
+            y += MobListPanel.rowStride();
         }
     }
 
     private int visibleMobCount() {
-        return Math.max(1, (height - 182) / 25);
+        return Math.max(1, MobListPanel.listViewport(layout.mobList()).height() / MobListPanel.rowStride());
     }
 
     private void requestMobPage(int requestedPage) {
@@ -194,76 +221,71 @@ public final class MobEditorScreen extends Screen {
 
     private void buildAbilities(int x, int y) {
         if (!MobEditorClientState.abilityAuthoringAvailable()) {
-            addRenderableWidget(Button.builder(Component.literal("v2非対応: Ability編集は利用できません"), b -> { })
-                    .bounds(x, y, 360, 20).build()).active = false;
+            addRenderableWidget(new ProjectSCard(x, y, Math.min(360, layout.property().width()), 48,
+                    Component.literal("Ability 編集"), AbilityAssignmentPanel.unavailableMessage(),
+                    ProjectSCard.State.WARNING, null));
             return;
         }
         clampAbilityOffsets();
         List<String> assigned = abilities.assigned();
         int assignedEnd = Math.min(assigned.size(),
                 assignedAbilityOffset + ABILITY_ASSIGNED_PAGE_SIZE);
-        int row = 0;
+        List<AbilityAssignmentPanel.AssignedRow> assignedRows = new ArrayList<>();
         for (String id : assigned.subList(assignedAbilityOffset, assignedEnd)) {
             MobEditorV2StatePayload.State authority = MobEditorClientState.authoritativeV2State();
             String label = authority.catalog().stream()
                     .filter(entry -> entry.id().equals(id)).findFirst()
                     .map(entry -> entry.displayName() + " (" + id + ")")
                     .orElse("利用不可: " + id);
-            int current = row++;
-            addRenderableWidget(Button.builder(Component.literal(label), b -> { })
-                    .bounds(x, y + current * 25, 250, 20).build()).active = false;
-            button(x + 254, y + current * 25, "削除", () -> {
+            boolean stale = authority.catalog().stream().noneMatch(entry -> entry.id().equals(id));
+            assignedRows.add(new AbilityAssignmentPanel.AssignedRow(id, label, stale, () -> {
                 abilities.remove(id);
                 dirty = true;
                 clampAbilityOffsets();
                 refreshWidgets();
-            }, 48);
-            button(x + 306, y + current * 25, "↑", () -> {
+            }, () -> {
                 abilities.move(id, -1);
                 dirty = true;
                 refreshWidgets();
-            }, 24);
-            button(x + 334, y + current * 25, "↓", () -> {
+            }, () -> {
                 abilities.move(id, 1);
                 dirty = true;
                 refreshWidgets();
-            }, 24);
+            }));
         }
-        button(x, y + 128, "割当◀", () -> {
-            assignedAbilityOffset = Math.max(0,
-                    assignedAbilityOffset - ABILITY_ASSIGNED_PAGE_SIZE);
-            refreshWidgets();
-        }, 56);
-        button(x + 60, y + 128, "割当▶", () -> {
-            assignedAbilityOffset += ABILITY_ASSIGNED_PAGE_SIZE;
-            clampAbilityOffsets();
-            refreshWidgets();
-        }, 56);
         List<AbilityEditorModel.CatalogItem> available = abilities.available();
         int availableEnd = Math.min(available.size(),
                 availableAbilityOffset + ABILITY_AVAILABLE_PAGE_SIZE);
-        int addY = y + 155;
+        List<AbilityAssignmentPanel.AvailableRow> availableRows = new ArrayList<>();
         for (AbilityEditorModel.CatalogItem entry : available.subList(
                 availableAbilityOffset, availableEnd)) {
-            addRenderableWidget(Button.builder(Component.literal("追加: " + entry.displayName() + " (" + entry.id() + ")"), b -> {
+            availableRows.add(new AbilityAssignmentPanel.AvailableRow(entry.id(),
+                    entry.displayName() + " (" + entry.id() + ")", () -> {
                 if (abilities.add(entry.id())) {
                     dirty = true;
                     clampAbilityOffsets();
                     refreshWidgets();
                 }
-            }).bounds(x, addY, 360, 20).build());
-            addY += 24;
+            }));
         }
-        button(x, y + 255, "追加◀", () -> {
+        AbilityAssignmentPanel.build(new MobEditorLayout.Bounds(layout.property().x(), y,
+                layout.property().width(), layout.property().height()), new AbilityAssignmentPanel.View(
+                assignedRows, availableRows, () -> {
+            assignedAbilityOffset = Math.max(0, assignedAbilityOffset - ABILITY_ASSIGNED_PAGE_SIZE);
+            refreshWidgets();
+        }, () -> {
+            assignedAbilityOffset += ABILITY_ASSIGNED_PAGE_SIZE;
+            clampAbilityOffsets();
+            refreshWidgets();
+        }, () -> {
             availableAbilityOffset = Math.max(0,
                     availableAbilityOffset - ABILITY_AVAILABLE_PAGE_SIZE);
             refreshWidgets();
-        }, 56);
-        button(x + 60, y + 255, "追加▶", () -> {
+        }, () -> {
             availableAbilityOffset += ABILITY_AVAILABLE_PAGE_SIZE;
             clampAbilityOffsets();
             refreshWidgets();
-        }, 56);
+        }), this::addPropertyWidget);
     }
 
     private void clampAbilityOffsets() {
@@ -278,38 +300,47 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void buildBasic(int x, int y) {
+        if (compactProperty()) {
+            int w = layout.property().width();
+            field("id", "内部ID（固定）", draft.id(), x, y, w).setEditable(false);
+            field("display", "表示名", draft.displayName(), x, y + 44, w);
+            field("entity", "EntityType", draft.entityType(), x, y + 88, w);
+            field("level", "レベル", Integer.toString(draft.level()), x, y + 132, w);
+            field("tags", "タグ（,区切り）", String.join(",", draft.tags()), x, y + 176, w);
+            addPropertyButton(x, y + 220, w, "カテゴリ: " + draft.category(), this::cycleCategory);
+            addPropertyButton(x, y + 244, w, "有効: " + (draft.enabled() ? "ON" : "OFF"), this::toggleEnabled);
+            addPropertyButton(x, y + 268, w, "ネームプレート: " + draft.nameplate(), this::cycleNameplate);
+            return;
+        }
         field("id", "内部ID（固定）", draft.id(), x, y, 174).setEditable(false);
         field("display", "表示名", draft.displayName(), x + 190, y, 174);
         field("entity", "EntityType", draft.entityType(), x, y + 44, 174);
         field("level", "レベル", Integer.toString(draft.level()), x + 190, y + 44, 174);
         field("tags", "タグ（,区切り）", String.join(",", draft.tags()), x, y + 88, 364);
-        addRenderableWidget(Button.builder(
-                Component.literal("カテゴリ: " + draft.category()), button -> {
+        addPropertyButton(x, y + 132, 174, "カテゴリ: " + draft.category(), () -> {
                     collectCurrentTab();
                     draft = copyBasic(draft, draft.displayName(), draft.entityType(),
                             next(draft.category()), draft.enabled(), draft.level(),
                             draft.nameplate(), draft.tags());
                     dirty = true;
                     rebuild();
-                }).bounds(x, y + 132, 174, 20).build());
-        addRenderableWidget(Button.builder(
-                Component.literal("有効: " + (draft.enabled() ? "ON" : "OFF")), button -> {
+                });
+        addPropertyButton(x + 190, y + 132, 174, "有効: " + (draft.enabled() ? "ON" : "OFF"), () -> {
                     collectCurrentTab();
                     draft = copyBasic(draft, draft.displayName(), draft.entityType(),
                             draft.category(), !draft.enabled(), draft.level(),
                             draft.nameplate(), draft.tags());
                     dirty = true;
                     rebuild();
-                }).bounds(x + 190, y + 132, 174, 20).build());
-        addRenderableWidget(Button.builder(
-                Component.literal("ネームプレート: " + draft.nameplate()), button -> {
+                });
+        addPropertyButton(x, y + 164, 364, "ネームプレート: " + draft.nameplate(), () -> {
                     collectCurrentTab();
                     draft = copyBasic(draft, draft.displayName(), draft.entityType(),
                             draft.category(), draft.enabled(), draft.level(),
                             next(draft.nameplate()), draft.tags());
                     dirty = true;
                     rebuild();
-                }).bounds(x, y + 164, 364, 20).build());
+                });
     }
 
     private void buildStats(int x, int y) {
@@ -323,19 +354,22 @@ public final class MobEditorScreen extends Screen {
                 s.attackSpeed(), s.criticalChance(), s.criticalDamage(),
                 s.damageReduction()};
         for (int index = 0; index < keys.length; index++) {
-            int column = index / 5;
-            int row = index % 5;
+            int column = compactProperty() ? 0 : index / 5;
+            int row = compactProperty() ? index : index % 5;
             field(keys[index], names[index], number(values[index]),
-                    x + column * 190, y + row * 38, 174);
+                    x + column * 190, y + row * 38,
+                    compactProperty() ? layout.property().width() : 174);
         }
         MobEditorData.BasicAttack a = draft.attack();
-        field("fixed", "固定ダメージ", number(a.fixedDamage()), x, y + 200, 112);
-        field("coef", "攻撃力係数", number(a.coefficient()), x + 126, y + 200, 112);
-        field("interval", "間隔", number(a.intervalSeconds()), x + 252, y + 200, 112);
-        field("range", "距離", number(a.range()), x, y + 238, 112);
-        field("knockback", "KB", number(a.knockback()), x + 126, y + 238, 112);
-        addRenderableWidget(Button.builder(
-                Component.literal("種別: " + a.damageType()), button -> {
+        int attackY = y + (compactProperty() ? 380 : 200);
+        int smallWidth = compactProperty() ? layout.property().width() : 112;
+        int compactStep = compactProperty() ? 38 : 0;
+        field("fixed", "固定ダメージ", number(a.fixedDamage()), x, attackY, smallWidth);
+        field("coef", "攻撃力係数", number(a.coefficient()), x + (compactProperty() ? 0 : 126), attackY + compactStep, smallWidth);
+        field("interval", "間隔", number(a.intervalSeconds()), x + (compactProperty() ? 0 : 252), attackY + compactStep * 2, smallWidth);
+        field("range", "距離", number(a.range()), x, attackY + (compactProperty() ? 114 : 38), smallWidth);
+        field("knockback", "KB", number(a.knockback()), x + (compactProperty() ? 0 : 126), attackY + (compactProperty() ? 152 : 38), smallWidth);
+        addPropertyButton(x + (compactProperty() ? 0 : 252), attackY + (compactProperty() ? 190 : 38), smallWidth, "種別: " + a.damageType(), () -> {
                     collectCurrentTab();
                     draft = withAttack(draft, new MobEditorData.BasicAttack(
                             next(a.damageType()), a.fixedDamage(), a.coefficient(),
@@ -343,10 +377,9 @@ public final class MobEditorScreen extends Screen {
                             a.criticalAllowed()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 252, y + 238, 112, 20).build());
-        addRenderableWidget(Button.builder(
-                Component.literal("クリティカル:"
-                        + (a.criticalAllowed() ? "ON" : "OFF")), button -> {
+                });
+        addPropertyButton(x + (compactProperty() ? 0 : 252), attackY + (compactProperty() ? 214 : 70), smallWidth, "クリティカル:"
+                + (a.criticalAllowed() ? "ON" : "OFF"), () -> {
                     collectCurrentTab();
                     MobEditorData.BasicAttack current = draft.attack();
                     draft = withAttack(draft, new MobEditorData.BasicAttack(
@@ -355,18 +388,19 @@ public final class MobEditorScreen extends Screen {
                             !current.criticalAllowed()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 252, y + 270, 112, 20).build());
+                });
     }
 
     private void buildAi(int x, int y) {
         MobEditorData.Ai ai = draft.ai();
-        field("aggro", "索敵距離", number(ai.aggroRange()), x, y, 174);
-        field("chase", "追跡距離", number(ai.chaseRange()), x + 190, y, 174);
-        field("leash", "帰還距離", number(ai.leashRange()), x, y + 44, 174);
-        field("airange", "攻撃距離", number(ai.attackRange()), x + 190, y + 44, 174);
-        field("refresh", "再検索秒", number(ai.refreshSeconds()), x, y + 88, 174);
-        addRenderableWidget(Button.builder(
-                Component.literal("プリセット: " + ai.preset()), button -> {
+        int w = compactProperty() ? layout.property().width() : 174;
+        int col = compactProperty() ? 0 : 190;
+        field("aggro", "索敵距離", number(ai.aggroRange()), x, y, w);
+        field("chase", "追跡距離", number(ai.chaseRange()), x + col, y + (compactProperty() ? 44 : 0), w);
+        field("leash", "帰還距離", number(ai.leashRange()), x, y + (compactProperty() ? 88 : 44), w);
+        field("airange", "攻撃距離", number(ai.attackRange()), x + col, y + (compactProperty() ? 132 : 44), w);
+        field("refresh", "再検索秒", number(ai.refreshSeconds()), x, y + (compactProperty() ? 176 : 88), w);
+        addPropertyButton(x + col, y + (compactProperty() ? 220 : 88), w, "プリセット: " + ai.preset(), () -> {
                     collectCurrentTab();
                     draft = withAi(draft, new MobEditorData.Ai(
                             next(ai.preset()), ai.priority(), ai.aggroRange(),
@@ -375,9 +409,8 @@ public final class MobEditorScreen extends Screen {
                             ai.avoidFalls(), ai.avoidWater()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 190, y + 88, 174, 20).build());
-        addRenderableWidget(Button.builder(
-                Component.literal("優先: " + ai.priority()), button -> {
+                });
+        addPropertyButton(x, y + (compactProperty() ? 244 : 164), w, "優先: " + ai.priority(), () -> {
                     collectCurrentTab();
                     MobEditorData.Ai current = draft.ai();
                     draft = withAi(draft, new MobEditorData.Ai(
@@ -387,16 +420,16 @@ public final class MobEditorScreen extends Screen {
                             current.avoidFalls(), current.avoidWater()));
                     dirty = true;
                     rebuild();
-                }).bounds(x, y + 164, 174, 20).build());
-        toggleAi(x, y + 132, "帰還", ai.returnHome(), 0);
-        toggleAi(x + 94, y + 132, "帰還回復", ai.resetHealth(), 1);
-        toggleAi(x + 188, y + 132, "落下回避", ai.avoidFalls(), 2);
-        toggleAi(x + 282, y + 132, "水回避", ai.avoidWater(), 3);
+                });
+        int toggleY = y + (compactProperty() ? 272 : 132);
+        toggleAi(x, toggleY, "帰還", ai.returnHome(), 0);
+        toggleAi(x + (compactProperty() ? 0 : 94), toggleY + (compactProperty() ? 24 : 0), "帰還回復", ai.resetHealth(), 1);
+        toggleAi(x + (compactProperty() ? 0 : 188), toggleY + (compactProperty() ? 48 : 0), "落下回避", ai.avoidFalls(), 2);
+        toggleAi(x + (compactProperty() ? 0 : 282), toggleY + (compactProperty() ? 72 : 0), "水回避", ai.avoidWater(), 3);
     }
 
     private void toggleAi(int x, int y, String name, boolean value, int flag) {
-        addRenderableWidget(Button.builder(
-                Component.literal(name + ":" + (value ? "ON" : "OFF")), button -> {
+        addPropertyButton(x, y, compactProperty() ? layout.property().width() : 86, name + ":" + (value ? "ON" : "OFF"), () -> {
                     collectCurrentTab();
                     MobEditorData.Ai ai = draft.ai();
                     draft = withAi(draft, new MobEditorData.Ai(
@@ -408,14 +441,18 @@ public final class MobEditorScreen extends Screen {
                             flag == 3 ? !ai.avoidWater() : ai.avoidWater()));
                     dirty = true;
                     rebuild();
-                }).bounds(x, y, 86, 20).build());
+                });
     }
 
     private void buildAppearance(int x, int y) {
+        if (compactProperty()) {
+            buildAppearanceCompact();
+            return;
+        }
         MobEditorData.Appearance appearance = draft.appearance();
         field("scale", "スケール", number(appearance.scale()), x, y, 86);
-        Button ageButton = addRenderableWidget(Button.builder(
-                Component.literal("年齢: " + appearance.age()), button -> {
+        ProjectSButton ageButton = addPropertyButton(x + 92, y + 16, 86,
+                "年齢: " + appearance.age(), () -> {
                     collectCurrentTab();
                     draft = withAppearance(draft, new MobEditorData.Appearance(
                             appearance.scale(), next(appearance.age()),
@@ -423,10 +460,10 @@ public final class MobEditorScreen extends Screen {
                             appearance.variants(), appearance.equipment()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 92, y + 16, 86, 20).build());
+                });
         ageButton.active = supportsBaby(draft.entityType());
-        addRenderableWidget(Button.builder(
-                Component.literal("発光:" + (appearance.glowing() ? "ON" : "OFF")), button -> {
+        addPropertyButton(x + 184, y + 16, 86,
+                "発光:" + (appearance.glowing() ? "ON" : "OFF"), () -> {
                     collectCurrentTab();
                     draft = withAppearance(draft, new MobEditorData.Appearance(
                             appearance.scale(), appearance.age(),
@@ -434,9 +471,8 @@ public final class MobEditorScreen extends Screen {
                             appearance.variants(), appearance.equipment()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 184, y + 16, 86, 20).build());
-        addRenderableWidget(Button.builder(
-                Component.literal(appearance.glowingColor()), button -> {
+                });
+        addPropertyButton(x + 276, y + 16, 88, appearance.glowingColor(), () -> {
                     collectCurrentTab();
                     MobEditorData.Appearance current = draft.appearance();
                     draft = withAppearance(draft, new MobEditorData.Appearance(
@@ -445,7 +481,7 @@ public final class MobEditorScreen extends Screen {
                             current.equipment()));
                     dirty = true;
                     rebuild();
-                }).bounds(x + 276, y + 16, 88, 20).build());
+                });
         List<String> variantKeys = variantKeys(draft.entityType());
         for (int index = 0; index < variantKeys.size(); index++) {
             String key = variantKeys.get(index);
@@ -460,15 +496,14 @@ public final class MobEditorScreen extends Screen {
             MobEditorData.Equipment entry = appearance.equipment().get(slot);
             equipmentSources.put(slot, entry.source());
             int rowY = y + 88 + row * 24;
-            Button sourceButton = addRenderableWidget(Button.builder(
-                    Component.literal((slot == selectedEquipmentSlot ? "▶" : "")
-                            + shortSlot(slot) + ":" + entry.source()), button -> {
+            ProjectSButton sourceButton = addPropertyButton(x, rowY, 132,
+                    (slot == selectedEquipmentSlot ? "▶" : "") + shortSlot(slot) + ":" + entry.source(), () -> {
                         collectCurrentTab();
                         selectedEquipmentSlot = slot;
                         equipmentSources.put(slot, next(equipmentSources.get(slot)));
                         dirty = true;
                         rebuild();
-                    }).bounds(x, rowY, 132, 20).build());
+                    });
             sourceButton.active = equipmentSupported;
             String value = entry.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
                     ? entry.material() : entry.referenceId();
@@ -478,19 +513,18 @@ public final class MobEditorScreen extends Screen {
             row++;
         }
         MobEditorData.Equipment selected = appearance.equipment().get(selectedEquipmentSlot);
-        addRenderableWidget(Button.builder(
-                Component.literal("選択:" + shortSlot(selectedEquipmentSlot)), button -> {
+        addPropertyButton(x, y + 238, 86, "選択:" + shortSlot(selectedEquipmentSlot), () -> {
                     selectedEquipmentSlot = next(selectedEquipmentSlot);
                     rebuild();
-                }).bounds(x, y + 238, 86, 20).build());
-        Button glintButton = addRenderableWidget(Button.builder(
-                Component.literal("Glint:" + (selected.glint() ? "ON" : "OFF")), button -> {
+                });
+        ProjectSButton glintButton = addPropertyButton(x + 92, y + 238, 82,
+                "Glint:" + (selected.glint() ? "ON" : "OFF"), () -> {
                     toggleSelectedEquipment(true);
-                }).bounds(x + 92, y + 238, 82, 20).build());
-        Button visibleButton = addRenderableWidget(Button.builder(
-                Component.literal("表示:" + (selected.visible() ? "ON" : "OFF")), button -> {
+                });
+        ProjectSButton visibleButton = addPropertyButton(x + 180, y + 238, 82,
+                "表示:" + (selected.visible() ? "ON" : "OFF"), () -> {
                     toggleSelectedEquipment(false);
-                }).bounds(x + 180, y + 238, 82, 20).build());
+                });
         glintButton.active = equipmentSupported;
         visibleButton.active = equipmentSupported;
         field("eq_color", "革防具色 #RRGGBB", selected.color(),
@@ -508,15 +542,11 @@ public final class MobEditorScreen extends Screen {
         button(x + 300, y + 282, "次", () -> {
             requestHeadPage(headPage + 1);
         }, 54);
-        addRenderableWidget(Button.builder(
-                Component.literal("ヘッド登録"), button ->
-                        minecraft.setScreen(new HeadImportScreen(this)))
-                .bounds(x, y + 334, 86, 20).build());
-        Button favoriteButton = addRenderableWidget(Button.builder(
-                Component.literal("お気に入り切替"), button ->
-                        MobEditorClientState.updateHeadFavorite(
-                                MobEditorClientState.state().headDetail()))
-                .bounds(x + 92, y + 334, 104, 20).build());
+        addPropertyButton(x, y + 334, 86, "ヘッド登録", () ->
+                minecraft.setScreen(new HeadImportScreen(this)));
+        ProjectSButton favoriteButton = addPropertyButton(x + 92, y + 334, 104,
+                "お気に入り切替", () -> MobEditorClientState.updateHeadFavorite(
+                        MobEditorClientState.state().headDetail()));
         favoriteButton.active = MobEditorClientState.state().headDetail() != null;
         int headX = x;
         for (var head : MobEditorClientState.state().heads().stream()
@@ -524,12 +554,11 @@ public final class MobEditorScreen extends Screen {
                         (MobEditorStatePayload.HeadSummary value) ->
                                 recentHeads.contains(value.id())).reversed())
                 .limit(4).toList()) {
-            addRenderableWidget(Button.builder(
-                    Component.literal(head.favorite() ? "★" + head.displayName()
-                            : head.displayName()), button -> {
+            addPropertyButton(headX, y + 308, 88,
+                    head.favorite() ? "★" + head.displayName() : head.displayName(), () -> {
                         setHeadReference(head.id());
                         MobEditorClientState.requestHead(head.id(), headQuery, headPage);
-                    }).bounds(headX, y + 308, 88, 20).build());
+                    });
             headX += 92;
         }
     }
@@ -543,6 +572,24 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void buildTest(int x, int y) {
+        if (compactProperty()) {
+            String[] actions = {"足元へ召喚", "カーソルへ召喚", "テスト削除", "AI停止", "AI再開", "無敵", "無敵解除", "HP 25%", "HP 50%", "HP 100%", "外見再適用", "全員分削除"};
+            for (int index = 0; index < actions.length; index++) {
+                int code = index;
+                MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(
+                        new MobEditorLayout.Bounds(x, y, layout.property().width(), layout.property().height()),
+                        index / 2, index % 2, 2);
+                Runnable action = switch (index) {
+                    case 0 -> () -> testSpawn(false);
+                    case 1 -> () -> testSpawn(true);
+                    case 2 -> MobEditorClientState::despawnTests;
+                    case 11 -> MobEditorClientState::despawnAllTests;
+                    default -> () -> MobEditorClientState.controlTests(code - 3);
+                };
+                addPropertyButton(bounds.x(), bounds.y(), bounds.width(), actions[index], action);
+            }
+            return;
+        }
         button(x, y, "足元へ召喚", () -> testSpawn(false));
         button(x + 126, y, "カーソルへ召喚", () -> testSpawn(true));
         button(x + 252, y, "テスト削除", MobEditorClientState::despawnTests);
@@ -558,29 +605,152 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void buildBottom(int x) {
-        int y = height - 30;
-        button(x, y, "元に戻す", this::undo);
-        button(x + 96, y, "検証", this::validateDraft);
-        button(x + 192, y, "保存", this::saveDraft);
-        button(x + 288, y, "適用", this::applyDefinition);
+        MobEditorLayout.Bounds bounds = layout.actionBar();
+        addRenderableWidget(MobEditorActionBar.action(bounds, 0, 4,
+                "元に戻す", ProjectSButton.Kind.GHOST, this::undo));
+        addRenderableWidget(MobEditorActionBar.action(bounds, 1, 4,
+                "検証", ProjectSButton.Kind.SECONDARY, this::validateDraft));
+        addRenderableWidget(MobEditorActionBar.action(bounds, 2, 4,
+                "保存", ProjectSButton.Kind.PRIMARY, this::saveDraft));
+        addRenderableWidget(MobEditorActionBar.action(bounds, 3, 4,
+                "適用", ProjectSButton.Kind.PRIMARY, this::applyDefinition));
+    }
+
+    private void buildAppearanceCompact() {
+        MobEditorLayout.Bounds panel = new MobEditorLayout.Bounds(layout.property().x(),
+                layout.property().y() - propertyScroll, layout.property().width(), layout.property().height());
+        MobEditorData.Appearance appearance = draft.appearance();
+        MobEditorLayout.Bounds scale = MobPropertyPanel.compactRow(panel, 0);
+        field("scale", "スケール", number(appearance.scale()), scale.x(), scale.y(), scale.width());
+        MobEditorLayout.Bounds age = MobPropertyPanel.compactColumn(panel, 1, 0, 3);
+        MobEditorLayout.Bounds glow = MobPropertyPanel.compactColumn(panel, 1, 1, 3);
+        MobEditorLayout.Bounds color = MobPropertyPanel.compactColumn(panel, 1, 2, 3);
+        ProjectSButton ageButton = addPropertyButton(age.x(), age.y(), age.width(), "年齢: " + appearance.age(), () -> {
+            collectCurrentTab();
+            draft = withAppearance(draft, new MobEditorData.Appearance(appearance.scale(), next(appearance.age()),
+                    appearance.glowing(), appearance.glowingColor(), appearance.variants(), appearance.equipment()));
+            dirty = true; rebuild();
+        });
+        ageButton.active = supportsBaby(draft.entityType());
+        addPropertyButton(glow.x(), glow.y(), glow.width(), "発光:" + (appearance.glowing() ? "ON" : "OFF"), () -> {
+            collectCurrentTab();
+            draft = withAppearance(draft, new MobEditorData.Appearance(appearance.scale(), appearance.age(),
+                    !appearance.glowing(), appearance.glowingColor(), appearance.variants(), appearance.equipment()));
+            dirty = true; rebuild();
+        });
+        addPropertyButton(color.x(), color.y(), color.width(), appearance.glowingColor(), () -> {
+            collectCurrentTab();
+            MobEditorData.Appearance current = draft.appearance();
+            draft = withAppearance(draft, new MobEditorData.Appearance(current.scale(), current.age(), current.glowing(),
+                    nextGlowColor(current.glowingColor()), current.variants(), current.equipment()));
+            dirty = true; rebuild();
+        });
+        int row = 2;
+        for (String key : variantKeys(draft.entityType())) {
+            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactRow(panel, row++);
+            field("variant_" + key, key, appearance.variants().getOrDefault(key,
+                    defaultVariant(draft.entityType(), key)), bounds.x(), bounds.y(), bounds.width());
+        }
+        boolean equipmentSupported = supportsEquipment(draft.entityType());
+        for (MobEditorData.Slot slot : MobEditorData.Slot.values()) {
+            MobEditorData.Equipment entry = appearance.equipment().get(slot);
+            equipmentSources.put(slot, entry.source());
+            MobEditorLayout.Bounds source = MobPropertyPanel.compactColumn(panel, row, 0, 2);
+            MobEditorLayout.Bounds value = MobPropertyPanel.compactColumn(panel, row, 1, 2);
+            ProjectSButton sourceButton = addPropertyButton(source.x(), source.y(), source.width(),
+                    (slot == selectedEquipmentSlot ? "▶" : "") + shortSlot(slot) + ":" + entry.source(), () -> {
+                collectCurrentTab(); selectedEquipmentSlot = slot;
+                equipmentSources.put(slot, next(equipmentSources.get(slot))); dirty = true; rebuild();
+            });
+            sourceButton.active = equipmentSupported;
+            String equipmentValue = entry.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
+                    ? entry.material() : entry.referenceId();
+            field("eq_" + slot.name(), "", equipmentValue, value.x(), value.y(), value.width())
+                    .setEditable(equipmentSupported && entry.source() != MobEditorData.EquipmentSource.NONE);
+            row++;
+        }
+        MobEditorData.Equipment selected = appearance.equipment().get(selectedEquipmentSlot);
+        for (int column = 0; column < 3; column++) {
+            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(panel, row, column, 3);
+            if (column == 0) addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "選択:" + shortSlot(selectedEquipmentSlot), () -> { selectedEquipmentSlot = next(selectedEquipmentSlot); rebuild(); });
+            if (column == 1) { ProjectSButton button = addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "Glint:" + (selected.glint() ? "ON" : "OFF"), () -> toggleSelectedEquipment(true)); button.active = equipmentSupported; }
+            if (column == 2) { ProjectSButton button = addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "表示:" + (selected.visible() ? "ON" : "OFF"), () -> toggleSelectedEquipment(false)); button.active = equipmentSupported; }
+        }
+        MobEditorLayout.Bounds equipmentColor = MobPropertyPanel.compactRow(panel, ++row);
+        field("eq_color", "革防具色 #RRGGBB", selected.color(), equipmentColor.x(), equipmentColor.y(), equipmentColor.width()).setEditable(equipmentSupported);
+        MobEditorLayout.Bounds searchBounds = MobPropertyPanel.compactRow(panel, ++row);
+        EditBox headSearch = field("head_search", "ヘッド検索/タグ", headQuery, searchBounds.x(), searchBounds.y(), searchBounds.width());
+        headSearch.setResponder(value -> headQuery = value);
+        row++;
+        for (int column = 0; column < 3; column++) {
+            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(panel, row, column, 3);
+            if (column == 0) addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "検索", () -> requestHeadPage(0));
+            if (column == 1) addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "前", () -> requestHeadPage(Math.max(0, headPage - 1)));
+            if (column == 2) addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "次", () -> requestHeadPage(headPage + 1));
+        }
+        MobEditorLayout.Bounds importBounds = MobPropertyPanel.compactColumn(panel, ++row, 0, 2);
+        MobEditorLayout.Bounds favoriteBounds = MobPropertyPanel.compactColumn(panel, row, 1, 2);
+        addPropertyButton(importBounds.x(), importBounds.y(), importBounds.width(), "ヘッド登録", () -> minecraft.setScreen(new HeadImportScreen(this)));
+        ProjectSButton favorite = addPropertyButton(favoriteBounds.x(), favoriteBounds.y(), favoriteBounds.width(), "お気に入り切替", () -> MobEditorClientState.updateHeadFavorite(MobEditorClientState.state().headDetail()));
+        favorite.active = MobEditorClientState.state().headDetail() != null;
+        int headRow = ++row;
+        int column = 0;
+        for (var head : MobEditorClientState.state().heads().stream().limit(4).toList()) {
+            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(panel, headRow + column / 2, column % 2, 2);
+            addPropertyButton(bounds.x(), bounds.y(), bounds.width(), head.favorite() ? "★" + head.displayName() : head.displayName(), () -> {
+                setHeadReference(head.id()); MobEditorClientState.requestHead(head.id(), headQuery, headPage);
+            });
+            column++;
+        }
+    }
+
+    private boolean compactProperty() {
+        return layout.property().width() < 380;
+    }
+
+    private void cycleCategory() {
+        collectCurrentTab();
+        draft = copyBasic(draft, draft.displayName(), draft.entityType(), next(draft.category()),
+                draft.enabled(), draft.level(), draft.nameplate(), draft.tags());
+        dirty = true;
+        rebuild();
+    }
+
+    private void toggleEnabled() {
+        collectCurrentTab();
+        draft = copyBasic(draft, draft.displayName(), draft.entityType(), draft.category(),
+                !draft.enabled(), draft.level(), draft.nameplate(), draft.tags());
+        dirty = true;
+        rebuild();
+    }
+
+    private void cycleNameplate() {
+        collectCurrentTab();
+        draft = copyBasic(draft, draft.displayName(), draft.entityType(), draft.category(),
+                draft.enabled(), draft.level(), next(draft.nameplate()), draft.tags());
+        dirty = true;
+        rebuild();
     }
 
     private void buildPreviewButtons() {
-        int x = previewLeft() + 8;
-        int y = height - 30;
-        button(x, y, "リセット", this::resetPreview, 72);
-        button(x + 76, y, "視点", () -> {
+        previewButton(0, "リセット", this::resetPreview);
+        previewButton(1, "視点", () -> {
             view = next(view);
             applyView();
-        }, 58);
-        button(x + 138, y, "背景", () -> darkBackground = !darkBackground, 58);
-        button(x + 200, y, "Grid", () -> grid = !grid, 48);
-        button(x + 252, y, "Hit", () -> hitbox = !hitbox, 44);
-        button(x + 300, y, "Eye", () -> eyeLine = !eyeLine, 44);
-        button(x + 348, y, "Anim", () -> {
+        });
+        previewButton(2, "背景", () -> darkBackground = !darkBackground);
+        previewButton(3, "Grid", () -> grid = !grid);
+        previewButton(4, "Hit", () -> hitbox = !hitbox);
+        previewButton(5, "Eye", () -> eyeLine = !eyeLine);
+        previewButton(6, "Anim", () -> {
             animation = next(animation);
             preview.setAnimation(animation);
-        }, 52);
+        });
+    }
+
+    private void previewButton(int index, String label, Runnable action) {
+        MobEditorLayout.Bounds bounds = MobPreviewPanel.controlBounds(layout.preview(), index, 7);
+        button(bounds.x(), bounds.y(), label, action, bounds.width());
     }
 
     private EditBox field(
@@ -591,9 +761,13 @@ public final class MobEditorScreen extends Screen {
             int y,
             int width
     ) {
-        EditBox box = addRenderableWidget(new EditBox(
+        if (buildingProperty) {
+            x = Math.max(layout.property().x(), Math.min(x, layout.property().right() - 48));
+            width = Math.min(width, layout.property().right() - x);
+        }
+        EditBox box = addRenderableWidget(new ProjectSTextField(
                 font, x, y + (label.isBlank() ? 0 : 14), width, 20,
-                Component.literal(label)));
+                Component.literal(label), Component.empty()));
         box.setValue(value);
         box.setMaxLength(key.equals("tags") ? 512 : 128);
         fields.put(key, box);
@@ -604,6 +778,7 @@ public final class MobEditorScreen extends Screen {
                 preview.update(draft, MobEditorClientState.state().headDetail());
             }
         });
+        if (buildingProperty) propertyPanel.track(box, label.isBlank() ? 0 : 12, 3);
         return box;
     }
 
@@ -612,14 +787,36 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void button(int x, int y, String label, Runnable action, int width) {
-        addRenderableWidget(Button.builder(Component.literal(label), button -> action.run())
-                .bounds(x, y, width, 20).build());
+        addThemedButton(x, y, width, label, action);
+    }
+
+    private ProjectSButton addThemedButton(int x, int y, int width, String label, Runnable action) {
+        if (buildingProperty) {
+            x = Math.max(layout.property().x(), Math.min(x, layout.property().right() - 42));
+            width = Math.min(width, layout.property().right() - x);
+        }
+        ProjectSButton result = addRenderableWidget(new ProjectSButton(x, y, width, 20,
+                Component.literal(label), ProjectSButton.Kind.SECONDARY, action));
+        if (buildingProperty) propertyPanel.track(result, 0, 0);
+        return result;
+    }
+
+    private ProjectSButton addPropertyButton(int x, int y, int width, String label, Runnable action) {
+        ProjectSButton result = addThemedButton(x, y, width, label, action);
+        if (!buildingProperty) propertyPanel.track(result, 0, 0);
+        return result;
+    }
+
+    private void addPropertyWidget(net.minecraft.client.gui.components.AbstractWidget widget) {
+        addRenderableWidget(widget);
+        propertyPanel.track(widget, 0, 0);
     }
 
     private void switchTab(Tab value) {
         collectCurrentTab();
         if (!localError.isBlank()) return;
         tab = value;
+        propertyScroll = MobPropertyPanel.tabChangeScroll();
         refreshWidgets();
     }
 
@@ -788,12 +985,8 @@ public final class MobEditorScreen extends Screen {
 
     private void selectMob(String id) {
         if (dirty) {
-            minecraft.setScreen(new ConfirmScreen(
-                    confirmed -> {
-                        minecraft.setScreen(this);
-                        if (confirmed) discardAndSelect(id);
-                    }, Component.literal("未保存の変更を破棄しますか？"),
-                    Component.literal("別のMobを選択します")));
+            confirm("未保存の変更を破棄しますか？", "別のMobを選択します", "破棄して選択", () ->
+                    discardAndSelect(id));
             return;
         }
         discardAndSelect(id);
@@ -825,18 +1018,10 @@ public final class MobEditorScreen extends Screen {
     private void createDraft(String id) {
         clearPendingDuplicate();
         if (dirty) {
-            minecraft.setScreen(new ConfirmScreen(
-                    confirmed -> {
-                        minecraft.setScreen(this);
-                        if (confirmed) {
-                            if (MobEditorClientState.create(id)) {
-                                dirty = false;
-                            } else {
-                                localError = "通信中です。応答後にもう一度操作してください";
-                            }
-                        }
-                    }, Component.literal("未保存の変更を破棄しますか？"),
-                    Component.literal("新しいMob Draftを作成します")));
+            confirm("未保存の変更を破棄しますか？", "新しいMob Draftを作成します", "破棄して作成", () -> {
+                if (MobEditorClientState.create(id)) dirty = false;
+                else localError = "通信中です。応答後にもう一度操作してください";
+            });
             return;
         }
         if (!MobEditorClientState.create(id)) {
@@ -901,6 +1086,15 @@ public final class MobEditorScreen extends Screen {
 
     private void saveDraft() {
         collectCurrentTab();
+        if (MobEditorClientState.communicating()
+                || MobEditorClientState.state().revisionConflict()) {
+            localError = MobEditorClientState.state().revisionConflict()
+                    ? "競合を解決するまで保存できません"
+                    : "通信中です。応答後にもう一度操作してください";
+            toasts.show(ProjectSToast.Kind.WARNING, Component.literal("保存できません"),
+                    Component.literal(localError), 2600);
+            return;
+        }
         if (draft != null && localError.isBlank()) {
             if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.saveAbilities(draft, abilities.assigned());
             else MobEditorClientState.save(draft);
@@ -916,13 +1110,8 @@ public final class MobEditorScreen extends Screen {
         }
         if (!appliedEntityType.isBlank()
                 && !appliedEntityType.equals(draft.entityType())) {
-            minecraft.setScreen(new ConfirmScreen(
-                    confirmed -> {
-                        minecraft.setScreen(this);
-                        if (confirmed) MobEditorClientState.apply();
-                    },
-                    Component.literal("EntityType変更を適用しますか？"),
-                    Component.literal("既存個体は同じ位置で再生成されます")));
+            confirm("EntityType変更を適用しますか？", "既存個体は同じ位置で再生成されます", "適用",
+                    MobEditorClientState::apply);
             return;
         }
         MobEditorClientState.apply();
@@ -930,12 +1119,8 @@ public final class MobEditorScreen extends Screen {
 
     private void reloadDefinitions() {
         if (dirty) {
-            minecraft.setScreen(new ConfirmScreen(
-                    confirmed -> {
-                        minecraft.setScreen(this);
-                        if (confirmed) discardAndReload();
-                    }, Component.literal("未保存の変更を破棄しますか？"),
-                    Component.literal("サーバーの定義を再読み込みします")));
+            confirm("未保存の変更を破棄しますか？", "サーバーの定義を再読み込みします", "破棄して再読込",
+                    this::discardAndReload);
             return;
         }
         discardAndReload();
@@ -973,6 +1158,16 @@ public final class MobEditorScreen extends Screen {
     public void tick() {
         super.tick();
         preview.tick();
+        String message = localError.isBlank()
+                ? MobEditorClientState.state().message() : localError;
+        if (!message.isBlank() && !message.equals(lastToastMessage)) {
+            ProjectSToast.Kind kind = !localError.isBlank()
+                    ? ProjectSToast.Kind.ERROR : MobEditorClientState.state().success()
+                    ? ProjectSToast.Kind.SUCCESS : ProjectSToast.Kind.WARNING;
+            toasts.show(kind, Component.literal(kind == ProjectSToast.Kind.SUCCESS ? "Mob Editor" : "確認"),
+                    Component.literal(message), 2800);
+            lastToastMessage = message;
+        }
         if (knownRevision != MobEditorClientState.localRevision()) {
             rebuild();
         }
@@ -995,30 +1190,31 @@ public final class MobEditorScreen extends Screen {
             int mouseY,
             float tickProgress
     ) {
+        var theme = ProjectSThemeManager.get().activeTheme();
+        var tokens = theme.tokens();
         graphics.fill(0, 0, width, height,
-                darkBackground ? 0xF2070A0F : 0xF2232A31);
-        graphics.fill(0, 0, LEFT_WIDTH, height, 0xE9151B23);
-        graphics.fill(LEFT_WIDTH, 0, LEFT_WIDTH + CENTER_WIDTH, height, 0xE90D131A);
-        graphics.outline(LEFT_WIDTH, TOP, CENTER_WIDTH, height - TOP - BOTTOM,
-                0xFF405160);
-        graphics.text(font, "モブライブラリ", 10, 14, 0xFFF3F7FA, false);
+                darkBackground ? tokens.background() : tokens.backgroundAlt());
+        ProjectSUiDraw.cutPanel(graphics, layout.mobList().x(), layout.mobList().y(),
+                layout.mobList().width(), layout.mobList().height(), theme.metrics().cornerCut(),
+                tokens.surfaceAlt(), tokens.borderCard());
+        ProjectSUiDraw.cutPanel(graphics, layout.property().x(), layout.property().y(),
+                layout.property().width(), layout.property().height(), theme.metrics().cornerCut(),
+                tokens.surface(), tokens.borderCard());
+        graphics.text(font, "モブライブラリ", layout.header().x() + 4, layout.header().y() + 9,
+                tokens.textPrimary(), false);
         graphics.text(font, title.getString() + (dirty ? "  ● 未保存" : ""),
-                LEFT_WIDTH + 14, 14, dirty ? 0xFFFFA94D : 0xFFF3F7FA, false);
-        renderLabels(graphics);
+                layout.tabs().x(), layout.header().y() + 9,
+                dirty ? tokens.warning() : tokens.textPrimary(), false);
         renderPreview(graphics, mouseX, mouseY, tickProgress);
-        renderMessage(graphics);
-        if (tab == Tab.AI && draft != null) renderAiSummary(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
     }
 
-    private void renderLabels(GuiGraphicsExtractor graphics) {
-        for (var entry : fields.entrySet()) {
-            String label = labels.getOrDefault(entry.getKey(), "");
-            if (!label.isBlank()) {
-                graphics.text(font, label, entry.getValue().getX(),
-                        entry.getValue().getY() - 12, 0xFF91A1AF, false);
-            }
-        }
+    @Override
+    protected void extractThemedForeground(
+            GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress
+    ) {
+        renderMessage(graphics);
+        if (tab == Tab.AI && draft != null) renderAiSummary(graphics);
     }
 
     private void renderPreview(
@@ -1027,23 +1223,16 @@ public final class MobEditorScreen extends Screen {
             int mouseY,
             float tickProgress
     ) {
-        int left = previewLeft();
-        int top = TOP;
-        int right = width - 8;
-        int bottom = height - BOTTOM;
-        graphics.fill(left, top, right, bottom,
-                darkBackground ? 0xFF111820 : 0xFF607483);
-        graphics.outline(left, top, right - left, bottom - top, 0xFF506273);
-        graphics.text(font, "ライブプレビュー  " + view + " / " + animation,
-                left + 8, top + 8, 0xFFF3F7FA, false);
-        if (grid) {
-            for (int x = left + 20; x < right; x += 20) {
-                graphics.verticalLine(x, top + 28, bottom - 8, 0x334A6070);
-            }
-            for (int y = top + 28; y < bottom; y += 20) {
-                graphics.horizontalLine(left + 8, right - 8, y, 0x334A6070);
-            }
-        }
+        var theme = ProjectSThemeManager.get().activeTheme();
+        var tokens = theme.tokens();
+        MobEditorLayout.Bounds previewBounds = layout.preview();
+        int left = previewBounds.x();
+        int top = previewBounds.y();
+        int right = previewBounds.right();
+        int bottom = previewBounds.bottom();
+        MobEditorLayout.Bounds previewContent = MobPreviewPanel.contentBounds(previewBounds, 7);
+        MobPreviewPanel.renderChrome(graphics, font, previewBounds,
+                "ライブプレビュー  " + view + " / " + animation, darkBackground, grid, 7);
         LivingEntity entity = draft == null ? null
                 : preview.update(draft, MobEditorClientState.state().headDetail());
         if (entity != null) {
@@ -1053,60 +1242,65 @@ public final class MobEditorScreen extends Screen {
             float verticalOffset = view == View.HEAD
                     ? (float) (entity.getEyeHeight() * size * .45) : 0;
             InventoryScreen.extractEntityInInventoryFollowsMouse(
-                    graphics, left + 8, top + 26, right - 8, bottom - 8,
+                    graphics, previewContent.x(), previewContent.y(), previewContent.right(), previewContent.bottom(),
                     size, verticalOffset,
                     (float) (centerX + yaw), (float) (centerY + pitch), entity);
             if (hitbox) {
                 int boxWidth = Math.max(18, (int) (entity.getBbWidth() * zoom));
                 int boxHeight = Math.max(24, (int) (entity.getBbHeight() * zoom));
                 graphics.outline(centerX - boxWidth / 2,
-                        centerY - boxHeight, boxWidth, boxHeight, 0xFFFF6B6B);
+                        centerY - boxHeight, boxWidth, boxHeight, tokens.danger());
             }
             if (eyeLine) {
                 int eyeY = centerY - (int) (entity.getEyeHeight() * zoom);
-                graphics.horizontalLine(left + 8, right - 8, eyeY, 0xFF69D6A5);
+                graphics.horizontalLine(previewContent.x(), previewContent.right(), eyeY, tokens.success());
             }
             if (draft != null) {
                 String metrics = "Scale %.2f / Hit %.2f×%.2f / Eye %.2f / 攻撃距離 %.2f"
                         .formatted(draft.appearance().scale(), entity.getBbWidth(),
                                 entity.getBbHeight(), entity.getEyeHeight(),
                                 draft.attack().range());
-                graphics.text(font, metrics, left + 8, bottom - 18,
-                        0xFFB8C4CE, false);
+                graphics.text(font, metrics, left + 8, previewContent.bottom() - 12,
+                        tokens.textMuted(), false);
             }
         } else {
             graphics.centeredText(font, "プレビュー可能なLivingEntityを選択してください",
-                    (left + right) / 2, (top + bottom) / 2, 0xFFFF6B6B);
+                    (left + right) / 2, (top + previewContent.bottom()) / 2, tokens.danger());
         }
     }
 
     private void renderMessage(GuiGraphicsExtractor graphics) {
+        var tokens = ProjectSThemeManager.get().activeTheme().tokens();
+        int x = layout.property().x() + 4;
+        int y = layout.actionBar().y() - 12;
         if (!localError.isBlank()) {
-            graphics.text(font, font.plainSubstrByWidth(localError, CENTER_WIDTH - 28),
-                    LEFT_WIDTH + 14, height - 48, 0xFFFF6B6B, false);
+            graphics.text(font, font.plainSubstrByWidth(localError, layout.property().width() - 8),
+                    x, y, tokens.danger(), false);
             return;
         }
         String message = MobEditorClientState.state().message();
         if (message.isBlank()) return;
-        graphics.text(font, font.plainSubstrByWidth(message, CENTER_WIDTH - 28),
-                LEFT_WIDTH + 14, height - 48,
+        graphics.text(font, font.plainSubstrByWidth(message, layout.property().width() - 8),
+                x, y,
                 MobEditorClientState.state().success()
-                        ? 0xFF69D6A5 : 0xFFFF6B6B, false);
+                        ? tokens.success() : tokens.danger(), false);
     }
 
     private void renderAiSummary(GuiGraphicsExtractor graphics) {
         MobEditorData.Ai ai = draft.ai();
-        int x = LEFT_WIDTH + 14;
-        int y = 250;
-        graphics.text(font, "挙動サマリー", x, y, 0xFFE8B95C, false);
+        var tokens = ProjectSThemeManager.get().activeTheme().tokens();
+        int x = layout.property().x();
+        int y = layout.property().y() + (compactProperty() ? 364 : 250) - propertyScroll;
+        if (!propertyPanel.summaryVisible(y, 78)) return;
+        graphics.text(font, "挙動サマリー", x, y, tokens.warning(), false);
         graphics.text(font, "%.1fブロック以内のプレイヤーを検出します。"
-                .formatted(ai.aggroRange()), x, y + 16, 0xFFB8C4CE, false);
+                .formatted(ai.aggroRange()), x, y + 16, tokens.textMuted(), false);
         graphics.text(font, "最大%.1fブロックまで追跡します。"
-                .formatted(ai.chaseRange()), x, y + 30, 0xFFB8C4CE, false);
+                .formatted(ai.chaseRange()), x, y + 30, tokens.textMuted(), false);
         graphics.text(font, "初期位置から%.1fブロックで帰還します。"
-                .formatted(ai.leashRange()), x, y + 44, 0xFFB8C4CE, false);
+                .formatted(ai.leashRange()), x, y + 44, tokens.textMuted(), false);
         graphics.text(font, "HIGHEST_THREATは脅威値基盤未実装のため選択不可です。",
-                x, y + 62, 0xFFFFA94D, false);
+                x, y + 62, tokens.warning(), false);
     }
 
     @Override
@@ -1115,6 +1309,8 @@ public final class MobEditorScreen extends Screen {
             double deltaX,
             double deltaY
     ) {
+        if (super.mouseDragged(event, deltaX, deltaY)) return true;
+        if (modal.isOpen()) return true;
         if (insidePreview(event.x(), event.y())) {
             if (event.button() == 0) {
                 yaw += deltaX * 2;
@@ -1138,6 +1334,15 @@ public final class MobEditorScreen extends Screen {
             double horizontal,
             double vertical
     ) {
+        if (super.mouseScrolled(mouseX, mouseY, horizontal, vertical)) return true;
+        if (modal.isOpen()) return true;
+        if (layout.property().contains(mouseX, mouseY) && draft != null
+                && propertyContentHeight() > layout.property().height()) {
+            propertyScroll = layout.clampPropertyScroll(propertyScroll - (int) (vertical * 20),
+                    propertyContentHeight());
+            refreshWidgets();
+            return true;
+        }
         if (insidePreview(mouseX, mouseY)) {
             zoom = Math.clamp(zoom + vertical * 4, 16, 120);
             return true;
@@ -1146,8 +1351,7 @@ public final class MobEditorScreen extends Screen {
     }
 
     private boolean insidePreview(double x, double y) {
-        return x >= previewLeft() && x <= width - 8
-                && y >= TOP && y <= height - BOTTOM;
+        return MobPreviewPanel.contains(layout.preview(), x, y);
     }
 
     private void resetPreview() {
@@ -1169,8 +1373,14 @@ public final class MobEditorScreen extends Screen {
         }
     }
 
-    private int previewLeft() {
-        return LEFT_WIDTH + CENTER_WIDTH + 8;
+    private int propertyContentHeight() {
+        return switch (tab) {
+            case APPEARANCE, BASIC, STATS, AI -> MobPropertyPanel.contentHeight(tab.name(), compactProperty());
+            case TEST -> compactProperty() ? 228 : MobPropertyPanel.contentHeight(tab.name(), false);
+            case ABILITIES -> AbilityAssignmentPanel.contentHeight(layout.property().width(),
+                    Math.min(ABILITY_ASSIGNED_PAGE_SIZE, abilities.assigned().size()),
+                    Math.min(ABILITY_AVAILABLE_PAGE_SIZE, abilities.available().size()));
+        };
     }
 
     private String text(String key) {
@@ -1372,12 +1582,8 @@ public final class MobEditorScreen extends Screen {
     @Override
     public void onClose() {
         if (dirty) {
-            minecraft.setScreen(new ConfirmScreen(
-                    confirmed -> {
-                        if (confirmed) closeEditor();
-                        else minecraft.setScreen(this);
-                    }, Component.literal("未保存の変更を破棄しますか？"),
-                    Component.literal("Mob Editorを閉じます")));
+            confirm("未保存の変更を破棄しますか？", "Mob Editorを閉じます", "破棄して閉じる",
+                    this::closeEditor);
             return;
         }
         closeEditor();
@@ -1387,6 +1593,12 @@ public final class MobEditorScreen extends Screen {
         clearPendingDuplicate();
         MobEditorClientState.close();
         minecraft.setScreen(parent);
+    }
+
+    private void confirm(String title, String body, String confirmLabel, Runnable confirmed) {
+        modal.open(Component.literal(title), Component.literal(body), Component.literal(confirmLabel),
+                confirmed, Component.literal("キャンセル"), () -> { },
+                io.github.gyai.projects.client.ui.widget.ProjectSModal.PrimaryKind.DANGER, true);
     }
 
     private void clearPendingDuplicate() {

@@ -4,6 +4,11 @@ import io.github.gyai.projects.client.ui.mobeditor.AbilityEditorModel;
 import io.github.gyai.projects.client.ui.mobeditor.AbilityUndoBaseline;
 import io.github.gyai.projects.client.ui.mobeditor.DuplicateRequestCorrelation;
 import io.github.gyai.projects.client.ui.mobeditor.MobEditorProtocolSession;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorLayout;
+import io.github.gyai.projects.client.ui.mobeditor.AbilityAssignmentPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobListPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobPreviewPanel;
+import io.github.gyai.projects.client.ui.mobeditor.MobPropertyPanel;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 
@@ -70,6 +75,7 @@ public final class MobEditorV2UiModelTest {
         verifyAbilityUndoBaseline(decoded);
         verifyDuplicateRequestCorrelation();
         verifySession(decoded);
+        verifyLayout();
         verifyCompiledClientRegistration();
         System.out.println("MobEditorV2UiModelTest passed");
     }
@@ -240,6 +246,76 @@ public final class MobEditorV2UiModelTest {
                 && source.contains("MobEditorClientState.reset()");
         assert Class.forName("io.github.gyai.projects.client.ProjectSClient", false,
                 MobEditorV2UiModelTest.class.getClassLoader()) != null;
+        String editor = Files.readString(Path.of(
+                "src/client/java/io/github/gyai/projects/client/MobEditorScreen.java"));
+        assert editor.contains("extends ProjectSThemedScreen");
+        assert !editor.contains("net.minecraft.client.gui.components.Button");
+        assert !editor.contains("class Button extends");
+        assert !editor.contains("Button.builder");
+    }
+
+    private static void verifyLayout() {
+        for (int[] size : List.of(new int[] {640, 360}, new int[] {960, 540},
+                new int[] {1280, 720}, new int[] {1600, 720})) {
+            MobEditorLayout layout = MobEditorLayout.of(size[0], size[1]);
+            assertInside(layout.header(), size);
+            assertInside(layout.mobList(), size);
+            assertInside(layout.tabs(), size);
+            assertInside(layout.property(), size);
+            assertInside(layout.preview(), size);
+            assertInside(layout.actionBar(), size);
+            assert layout.mobList().right() <= layout.property().x();
+            assert layout.property().right() <= layout.preview().x();
+            assert layout.tabs().bottom() <= layout.property().y();
+            assert layout.property().bottom() <= layout.actionBar().y();
+            assert layout.clampPropertyScroll(-1, 600) == 0;
+            assert layout.clampPropertyScroll(9999, 600)
+                    == layout.propertyScrollMaximum(600);
+            MobEditorLayout.Bounds basic = new MobEditorLayout.Bounds(
+                    layout.property().x(), layout.property().y(), layout.property().width(), 20);
+            assert MobPropertyPanel.fullyVisible(layout.property(), basic);
+            assert MobPropertyPanel.contentHeight("BASIC", true) >= 288;
+            assert MobPropertyPanel.contentHeight("STATS", true) >= 614;
+            assert MobPropertyPanel.contentHeight("AI", true) >= 442;
+            assert MobPropertyPanel.contentHeight("APPEARANCE", true) >= 608;
+            assert MobPropertyPanel.contentHeight("TEST", true) >= 228;
+            MobEditorLayout.Bounds compactLeft = MobPropertyPanel.compactColumn(layout.property(), 1, 0, 2);
+            MobEditorLayout.Bounds compactRight = MobPropertyPanel.compactColumn(layout.property(), 1, 1, 2);
+            assert compactLeft.right() <= compactRight.x();
+            assert AbilityAssignmentPanel.contentHeight(layout.property().width(), 5, 4) >= 500;
+            for (int index = 0; index < 7; index++) {
+                MobEditorLayout.Bounds control = MobPreviewPanel.controlBounds(layout.preview(), index, 7);
+                assertInside(control, size);
+                assert MobPropertyPanel.fullyVisible(layout.preview(), control);
+            }
+            MobEditorLayout.Bounds content = MobPreviewPanel.contentBounds(layout.preview(), 7);
+            assert content.height() > 0;
+            assert content.bottom() <= MobPreviewPanel.controlBounds(layout.preview(), 6, 7).y();
+            for (int index = 0; index < 3; index++) {
+                MobEditorLayout.Bounds action = MobListPanel.actionBounds(layout.mobList(), index);
+                assert MobPropertyPanel.fullyVisible(layout.mobList(), action);
+                if (index > 0) assert MobListPanel.actionBounds(layout.mobList(), index - 1).right() <= action.x();
+            }
+            for (int index = 0; index < 4; index++) {
+                MobEditorLayout.Bounds pager = MobListPanel.pagerBounds(layout.mobList(), MobListPanel.pagerY(layout.mobList()), index);
+                assert MobPropertyPanel.fullyVisible(layout.mobList(), pager);
+                if (index > 0) assert MobListPanel.pagerBounds(layout.mobList(), MobListPanel.pagerY(layout.mobList()), index - 1).right() <= pager.x();
+            }
+            assert MobListPanel.listViewport(layout.mobList()).bottom() <= MobListPanel.pagerY(layout.mobList());
+            assert MobListPanel.pagerY(layout.mobList()) + 20 <= MobListPanel.createY(layout.mobList());
+            assert MobListPanel.createY(layout.mobList()) + 20 <= MobListPanel.actionY(layout.mobList());
+            assert MobPropertyPanel.tabChangeScroll() == 0;
+            assert MobPropertyPanel.normalizeScroll(384, 250, 228) == 0;
+            assert MobPropertyPanel.normalizeScroll(384, 250, 500) == 250;
+            assert MobPropertyPanel.normalizeScroll(40, 250, 200) == 0;
+            assert MobPropertyPanel.normalizeScroll(40, 250, 700) == 40;
+        }
+    }
+
+    private static void assertInside(MobEditorLayout.Bounds bounds, int[] size) {
+        assert bounds.x() >= 0 && bounds.y() >= 0;
+        assert bounds.right() <= size[0] && bounds.bottom() <= size[1];
+        assert bounds.width() > 0 && bounds.height() > 0;
     }
 
     private static byte[] encodeV1(MobEditorData.Mob mob) {
