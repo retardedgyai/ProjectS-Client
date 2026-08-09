@@ -72,6 +72,8 @@ public final class ProjectSClient implements ClientModInitializer {
                 MonsterUiPayload.TYPE, MonsterUiPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(
                 TelegraphPayload.TYPE, TelegraphPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                AbilityVfxPayload.TYPE, AbilityVfxPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(
                 TelegraphHelloPayload.TYPE,
                 TelegraphHelloPayload.CODEC);
@@ -123,7 +125,12 @@ public final class ProjectSClient implements ClientModInitializer {
                 TelegraphPayload.TYPE,
                 (payload, context) -> context.client().execute(
                         () -> TelegraphClientState.receive(
-                                payload.update()))
+                                  payload.update()))
+        );
+        ClientPlayNetworking.registerGlobalReceiver(
+                AbilityVfxPayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> AbilityVfxClientState.receive(payload.decoded()))
         );
         ClientPlayNetworking.registerGlobalReceiver(
                 MobEditorStatePayload.TYPE,
@@ -153,6 +160,7 @@ public final class ProjectSClient implements ClientModInitializer {
                     BalanceClientState.reset();
                     MonsterUiClientState.clear();
                     TelegraphClientState.clear();
+                    AbilityVfxClientState.resetConnection();
                     MobEditorClientState.reset();
                     BetaClientRuntime.disconnect();
                     WORLD_LIFECYCLE.reset();
@@ -162,6 +170,7 @@ public final class ProjectSClient implements ClientModInitializer {
                         client.execute(() -> {
                             BetaClientRuntime.beginConnection();
                             WORLD_LIFECYCLE.reset();
+                            AbilityVfxClientState.resetConnection();
                             if (ClientPlayNetworking.canSend(
                                     TelegraphHelloPayload.TYPE)) {
                                 ClientPlayNetworking.send(
@@ -173,6 +182,7 @@ public final class ProjectSClient implements ClientModInitializer {
         ProjectSScreenManager.register();
         MonsterUiRenderer.register();
         TelegraphRenderer.register();
+        AbilityVfxRenderer.register();
 
         // Minecraftの移動キーWとの衝突を避けるため、初期値はQ/E/R/F。
         // 設定 > 操作設定 > キー割り当て から自由に変更可能。
@@ -189,6 +199,7 @@ public final class ProjectSClient implements ClientModInitializer {
             }
             MonsterUiClientState.tick(client);
             TelegraphClientState.tick(client);
+            AbilityVfxClientState.tick(client);
             // チャット・インベントリ・各種画面を開いている間は誤発動させない。
             if (client.player == null || client.getConnection() == null || client.screen != null) {
                 releaseAttack();
