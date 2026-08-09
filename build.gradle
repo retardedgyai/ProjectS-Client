@@ -54,6 +54,13 @@ tasks.register('telegraphClientTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('abilityVfxClientTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.vfx.AbilityVfxClientTest'
+    jvmArgs '-ea'
+}
+
 tasks.register('projectSUiLogicTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -125,6 +132,7 @@ tasks.register('mobEditorV2UiModelTest', JavaExec) {
 }
 
 tasks.named('check') {
+    dependsOn abilityVfxClientTest
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
     dependsOn betaClientFoundationTest
