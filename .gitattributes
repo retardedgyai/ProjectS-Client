@@ -1,4 +1,6 @@
 docs/protocol/beta-protocol-v1.json text eol=lf
-src/test/resources/protocol/beta-protocol-v1-vectors.json text eol=lf
-src/test/resources/protocol/mob-editor-v2-fixture.txt text eol=lf
-src/test/resources/protocol/ability-vfx-v1-golden.hex text eol=lf
+client-core/src/test/resources/protocol/beta-protocol-v1-vectors.json text eol=lf
+client-core/src/test/resources/protocol/ability-vfx-v1-golden.hex text eol=lf
+client-core/src/test/resources/protocol/ability-vfx-validation-v1.txt text eol=lf
+client-core/src/test/resources/protocol/fire-elements-server-publisher-v1.json text eol=lf
+devtools/src/test/resources/protocol/mob-editor-v2-fixture.txt text eol=lf

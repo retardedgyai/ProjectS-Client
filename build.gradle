@@ -1,169 +1,22 @@
-plugins {
-    id 'net.fabricmc.fabric-loom' version "${loom_version}"
-    id 'maven-publish'
+plugins { id 'base' }
+
+allprojects {
+    group = providers.gradleProperty('maven_group').get()
+    version = providers.gradleProperty('mod_version').get()
 }
 
-version = project.mod_version
-group = project.maven_group
-
-base {
-    archivesName = project.archives_base_name
-}
-
-loom {
-    splitEnvironmentSourceSets()
-    mods {
-        "projects_client" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
-        }
-    }
-}
-
-dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-}
-
-processResources {
-    inputs.property "version", project.version
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 25
-    options.encoding = 'UTF-8'
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
-    }
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-tasks.register('telegraphClientTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.TelegraphClientLogicTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('abilityVfxClientTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.vfx.AbilityVfxClientTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('projectSUiLogicTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.ui.ProjectSUiLogicTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('betaClientFoundationTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.BetaClientFoundationTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('betaProtocolCompatibilityTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.BetaProtocolCompatibilityTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('betaClientRuntimeLifecycleTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.BetaClientRuntimeLifecycleTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('fireStatusClientStoreTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.FireStatusClientStoreTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('fireStatusRenderRouteTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.FireStatusRenderRouteTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('iceStatusClientStoreTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.IceStatusClientStoreTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('elementStatusRenderRouteTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.ElementStatusRenderRouteTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('clientWorldLifecycleGuardTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.beta.ClientWorldLifecycleGuardTest'
-    jvmArgs '-ea'
-}
-
-tasks.register('mobEditorV2UiModelTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'io.github.gyai.projects.client.MobEditorV2UiModelTest'
-    jvmArgs '-ea'
-}
-
-tasks.named('check') {
-    dependsOn abilityVfxClientTest
-    dependsOn telegraphClientTest
-    dependsOn projectSUiLogicTest
-    dependsOn betaClientFoundationTest
-    dependsOn betaProtocolCompatibilityTest
-    dependsOn betaClientRuntimeLifecycleTest
-    dependsOn fireStatusClientStoreTest
-    dependsOn fireStatusRenderRouteTest
-    dependsOn iceStatusClientStoreTest
-    dependsOn elementStatusRenderRouteTest
-    dependsOn clientWorldLifecycleGuardTest
-    dependsOn mobEditorV2UiModelTest
-}
-
-tasks.named('test') {
-    failOnNoDiscoveredTests = false
-}
-
+tasks.named('check') { dependsOn ':client-core:check', ':editor-core:check', ':devtools:check' }
+tasks.named('clean') { dependsOn ':client-core:clean', ':editor-core:clean', ':devtools:clean' }
 tasks.named('build') {
+    dependsOn ':client-core:build', ':editor-core:build', ':devtools:build'
     doLast {
         if (!project.hasProperty('skipAutoStart')) {
-            def script = layout.projectDirectory
-                    .file('scripts/deploy-and-start-client.ps1').asFile.absolutePath
-            def process = new ProcessBuilder(
-                    'powershell.exe',
-                    '-NoProfile',
-                    '-ExecutionPolicy', 'Bypass',
-                    '-File', script
-            ).inheritIO().start()
-            if (process.waitFor() != 0) {
-                throw new GradleException('Client mod deployment or Minecraft launch failed.')
-            }
+            def core = project(':client-core').layout.buildDirectory.file("libs/projects-client-${project.version}.jar").get().asFile
+            def devtools = project(':devtools').layout.buildDirectory.file("libs/projects-devtools-${project.version}.jar").get().asFile
+            if (!core.isFile() || !devtools.isFile()) throw new GradleException('Both ProjectS mod artifacts must exist before deployment.')
+            def script = layout.projectDirectory.file('scripts/deploy-and-start-client.ps1').asFile.absolutePath
+            def process = new ProcessBuilder('powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script).inheritIO().start()
+            if (process.waitFor() != 0) throw new GradleException('Client mod deployment or Launcher restart failed.')
         }
     }
 }
