@@ -17,15 +17,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import io.github.gyai.projects.client.ui.mobeditor.AbilityEditorModel;
+import io.github.gyai.projects.client.ui.mobeditor.AbilityUndoBaseline;
+import io.github.gyai.projects.client.ui.mobeditor.DuplicateRequestCorrelation;
 
 public final class MobEditorScreen extends Screen {
-    private enum Tab { BASIC, STATS, AI, APPEARANCE, TEST }
+    private enum Tab { BASIC, STATS, AI, ABILITIES, APPEARANCE, TEST }
     private enum View { FRONT, BACK, LEFT, RIGHT, FREE, HEAD }
 
     private static final int LEFT_WIDTH = 190;
     private static final int CENTER_WIDTH = 390;
     private static final int TOP = 34;
     private static final int BOTTOM = 38;
+    private static final int ABILITY_ASSIGNED_PAGE_SIZE = 5;
+    private static final int ABILITY_AVAILABLE_PAGE_SIZE = 4;
 
     private final Screen parent;
     private final MobPreviewEntity preview = new MobPreviewEntity();
@@ -38,7 +43,8 @@ public final class MobEditorScreen extends Screen {
     private MobEditorData.Mob draft;
     private MobEditorData.Mob original;
     private MobEditorData.Mob duplicateTemplate;
-    private String pendingDuplicateId = "";
+    private final DuplicateRequestCorrelation duplicateCorrelation =
+            new DuplicateRequestCorrelation();
     private Tab tab = Tab.BASIC;
     private View view = View.FREE;
     private MobPreviewEntity.Animation animation = MobPreviewEntity.Animation.IDLE;
@@ -64,6 +70,10 @@ public final class MobEditorScreen extends Screen {
     private MobEditorData.Slot selectedEquipmentSlot = MobEditorData.Slot.HEAD;
     private String appliedEntityType = "";
     private String localError = "";
+    private final AbilityEditorModel abilities = new AbilityEditorModel();
+    private final AbilityUndoBaseline abilityUndoBaseline = new AbilityUndoBaseline();
+    private int assignedAbilityOffset;
+    private int availableAbilityOffset;
 
     public MobEditorScreen(Screen parent) {
         super(Component.literal("Mob Editor"));
@@ -118,7 +128,7 @@ public final class MobEditorScreen extends Screen {
             requestMobPage(mobPage + 1);
         }, 48);
 
-        int tabWidth = 64;
+        int tabWidth = 61;
         for (Tab value : Tab.values()) {
             addRenderableWidget(Button.builder(
                     Component.literal(tabName(value)), button -> switchTab(value))
@@ -176,9 +186,95 @@ public final class MobEditorScreen extends Screen {
             case BASIC -> buildBasic(x, y);
             case STATS -> buildStats(x, y);
             case AI -> buildAi(x, y);
+            case ABILITIES -> buildAbilities(x, y);
             case APPEARANCE -> buildAppearance(x, y);
             case TEST -> buildTest(x, y);
         }
+    }
+
+    private void buildAbilities(int x, int y) {
+        if (!MobEditorClientState.abilityAuthoringAvailable()) {
+            addRenderableWidget(Button.builder(Component.literal("v2非対応: Ability編集は利用できません"), b -> { })
+                    .bounds(x, y, 360, 20).build()).active = false;
+            return;
+        }
+        clampAbilityOffsets();
+        List<String> assigned = abilities.assigned();
+        int assignedEnd = Math.min(assigned.size(),
+                assignedAbilityOffset + ABILITY_ASSIGNED_PAGE_SIZE);
+        int row = 0;
+        for (String id : assigned.subList(assignedAbilityOffset, assignedEnd)) {
+            MobEditorV2StatePayload.State authority = MobEditorClientState.authoritativeV2State();
+            String label = authority.catalog().stream()
+                    .filter(entry -> entry.id().equals(id)).findFirst()
+                    .map(entry -> entry.displayName() + " (" + id + ")")
+                    .orElse("利用不可: " + id);
+            int current = row++;
+            addRenderableWidget(Button.builder(Component.literal(label), b -> { })
+                    .bounds(x, y + current * 25, 250, 20).build()).active = false;
+            button(x + 254, y + current * 25, "削除", () -> {
+                abilities.remove(id);
+                dirty = true;
+                clampAbilityOffsets();
+                refreshWidgets();
+            }, 48);
+            button(x + 306, y + current * 25, "↑", () -> {
+                abilities.move(id, -1);
+                dirty = true;
+                refreshWidgets();
+            }, 24);
+            button(x + 334, y + current * 25, "↓", () -> {
+                abilities.move(id, 1);
+                dirty = true;
+                refreshWidgets();
+            }, 24);
+        }
+        button(x, y + 128, "割当◀", () -> {
+            assignedAbilityOffset = Math.max(0,
+                    assignedAbilityOffset - ABILITY_ASSIGNED_PAGE_SIZE);
+            refreshWidgets();
+        }, 56);
+        button(x + 60, y + 128, "割当▶", () -> {
+            assignedAbilityOffset += ABILITY_ASSIGNED_PAGE_SIZE;
+            clampAbilityOffsets();
+            refreshWidgets();
+        }, 56);
+        List<AbilityEditorModel.CatalogItem> available = abilities.available();
+        int availableEnd = Math.min(available.size(),
+                availableAbilityOffset + ABILITY_AVAILABLE_PAGE_SIZE);
+        int addY = y + 155;
+        for (AbilityEditorModel.CatalogItem entry : available.subList(
+                availableAbilityOffset, availableEnd)) {
+            addRenderableWidget(Button.builder(Component.literal("追加: " + entry.displayName() + " (" + entry.id() + ")"), b -> {
+                if (abilities.add(entry.id())) {
+                    dirty = true;
+                    clampAbilityOffsets();
+                    refreshWidgets();
+                }
+            }).bounds(x, addY, 360, 20).build());
+            addY += 24;
+        }
+        button(x, y + 255, "追加◀", () -> {
+            availableAbilityOffset = Math.max(0,
+                    availableAbilityOffset - ABILITY_AVAILABLE_PAGE_SIZE);
+            refreshWidgets();
+        }, 56);
+        button(x + 60, y + 255, "追加▶", () -> {
+            availableAbilityOffset += ABILITY_AVAILABLE_PAGE_SIZE;
+            clampAbilityOffsets();
+            refreshWidgets();
+        }, 56);
+    }
+
+    private void clampAbilityOffsets() {
+        assignedAbilityOffset = clampAbilityOffset(assignedAbilityOffset,
+                abilities.assigned().size(), ABILITY_ASSIGNED_PAGE_SIZE);
+        availableAbilityOffset = clampAbilityOffset(availableAbilityOffset,
+                abilities.available().size(), ABILITY_AVAILABLE_PAGE_SIZE);
+    }
+
+    private static int clampAbilityOffset(int offset, int size, int pageSize) {
+        return Math.max(0, Math.min(offset, Math.max(0, size - pageSize)));
     }
 
     private void buildBasic(int x, int y) {
@@ -601,7 +697,7 @@ public final class MobEditorScreen extends Screen {
                             decimal("scale"), old.age(), old.glowing(),
                             old.glowingColor(), variants, equipment));
                 }
-                case TEST -> { }
+                case ABILITIES, TEST -> { }
             }
             if (!draft.equals(before)) dirty = true;
             preview.update(draft, MobEditorClientState.state().headDetail());
@@ -613,14 +709,24 @@ public final class MobEditorScreen extends Screen {
     private void syncState() {
         var state = MobEditorClientState.state();
         syncedStateRevision = MobEditorClientState.localRevision();
+        var v2 = MobEditorClientState.v2State();
+        if (v2 == null) {
+            // A v1 response has no v2 assignment authority.
+            abilities.replace(List.of(), List.of());
+            abilityUndoBaseline.clear();
+            assignedAbilityOffset = 0;
+            availableAbilityOffset = 0;
+        }
+        boolean duplicateSucceeded = duplicateCorrelation.consumeSuccessful(state.supported(),
+                state.permitted(), state.success(), state.revisionConflict(), state.message(),
+                state.detail() == null ? null : state.detail().id());
+        if (!duplicateCorrelation.pending() && !duplicateSucceeded) duplicateTemplate = null;
         if (state.detail() != null) {
-            if (!pendingDuplicateId.isBlank()
-                    && state.detail().id().equals(pendingDuplicateId)
-                    && duplicateTemplate != null) {
-                draft = copyId(duplicateTemplate, pendingDuplicateId);
+            if (duplicateSucceeded && duplicateTemplate != null) {
+                draft = copyId(duplicateTemplate, state.detail().id());
                 original = state.detail();
+                abilityUndoBaseline.capture(v2, original.id());
                 dirty = true;
-                pendingDuplicateId = "";
                 duplicateTemplate = null;
                 MobEditorClientState.validate(draft);
             } else {
@@ -630,13 +736,17 @@ public final class MobEditorScreen extends Screen {
                 boolean sameDraft = draft != null
                         && draft.id().equals(incoming.id())
                         && draft.revision() == incoming.revision();
-                if (!(dirty && sameDraft && !state.revisionConflict())) {
+                boolean preserveDirtyDraft = dirty && sameDraft && !state.revisionConflict();
+                if (!preserveDirtyDraft) {
                     draft = incoming;
                     if (state.message().contains("保存しました") || original == null
                             || !original.id().equals(draft.id())
                             || original.revision() != draft.revision()) {
                         original = draft;
                         dirty = false;
+                        replaceAuthoritativeAbilities(v2);
+                    } else if (v2 != null && v2.detail() != null) {
+                        replaceAuthoritativeAbilities(v2);
                     }
                     if (appliedEntityType.isBlank() || selectionChanged) {
                         appliedEntityType = draft.entityType();
@@ -655,6 +765,15 @@ public final class MobEditorScreen extends Screen {
             preview.update(draft, state.headDetail());
             requestDraftHeadDetail(state.headDetail());
         }
+    }
+
+    private void replaceAuthoritativeAbilities(MobEditorV2StatePayload.State v2) {
+        if (v2 == null || !v2.supported() || !v2.permitted() || v2.detail() == null || draft == null
+                || !v2.detail().base().id().equals(draft.id())) return;
+        abilityUndoBaseline.capture(v2, draft.id());
+        abilities.replace(abilityUndoBaseline.assigned(), abilityUndoBaseline.catalog());
+        assignedAbilityOffset = 0;
+        availableAbilityOffset = 0;
     }
 
     private void requestDraftHeadDetail(MobEditorData.Head current) {
@@ -681,6 +800,7 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void discardAndSelect(String id) {
+        clearPendingDuplicate();
         if (!MobEditorClientState.select(id)) {
             localError = "通信中です。応答後にもう一度操作してください";
             return;
@@ -694,15 +814,16 @@ public final class MobEditorScreen extends Screen {
         if (draft == null) return;
         collectCurrentTab();
         duplicateTemplate = draft;
-        pendingDuplicateId = draft.id() + "_copy";
-        if (!MobEditorClientState.create(pendingDuplicateId)) {
-            pendingDuplicateId = "";
-            duplicateTemplate = null;
+        String duplicateId = draft.id() + "_copy";
+        duplicateCorrelation.begin(duplicateId);
+        if (!MobEditorClientState.create(duplicateId)) {
+            clearPendingDuplicate();
             localError = "通信中です。応答後にもう一度操作してください";
         }
     }
 
     private void createDraft(String id) {
+        clearPendingDuplicate();
         if (dirty) {
             minecraft.setScreen(new ConfirmScreen(
                     confirmed -> {
@@ -772,12 +893,18 @@ public final class MobEditorScreen extends Screen {
 
     private void validateDraft() {
         collectCurrentTab();
-        if (draft != null && localError.isBlank()) MobEditorClientState.validate(draft);
+        if (draft != null && localError.isBlank()) {
+            if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.validateAbilities(draft, abilities.assigned());
+            else MobEditorClientState.validate(draft);
+        }
     }
 
     private void saveDraft() {
         collectCurrentTab();
-        if (draft != null && localError.isBlank()) MobEditorClientState.save(draft);
+        if (draft != null && localError.isBlank()) {
+            if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.saveAbilities(draft, abilities.assigned());
+            else MobEditorClientState.save(draft);
+        }
     }
 
     private void applyDefinition() {
@@ -827,13 +954,16 @@ public final class MobEditorScreen extends Screen {
     private void testSpawn(boolean cursor) {
         collectCurrentTab();
         if (draft != null && localError.isBlank()) {
-            MobEditorClientState.testSpawn(draft, cursor);
+            if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.testAbilities(draft, abilities.assigned(), cursor);
+            else MobEditorClientState.testSpawn(draft, cursor);
         }
     }
 
     private void undo() {
         if (original == null) return;
         draft = original;
+        abilityUndoBaseline.restoreInto(abilities);
+        clampAbilityOffsets();
         dirty = false;
         localError = "";
         refreshWidgets();
@@ -1067,6 +1197,7 @@ public final class MobEditorScreen extends Screen {
             case BASIC -> "基本";
             case STATS -> "Stats";
             case AI -> "AI";
+            case ABILITIES -> "Abilities";
             case APPEARANCE -> "外見";
             case TEST -> "テスト";
         };
@@ -1253,8 +1384,14 @@ public final class MobEditorScreen extends Screen {
     }
 
     private void closeEditor() {
+        clearPendingDuplicate();
         MobEditorClientState.close();
         minecraft.setScreen(parent);
+    }
+
+    private void clearPendingDuplicate() {
+        duplicateCorrelation.clear();
+        duplicateTemplate = null;
     }
 
     @Override
