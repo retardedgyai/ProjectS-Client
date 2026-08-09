@@ -117,6 +117,13 @@ tasks.register('clientWorldLifecycleGuardTest', JavaExec) {
     jvmArgs '-ea'
 }
 
+tasks.register('mobEditorV2UiModelTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.client.MobEditorV2UiModelTest'
+    jvmArgs '-ea'
+}
+
 tasks.named('check') {
     dependsOn telegraphClientTest
     dependsOn projectSUiLogicTest
@@ -128,6 +135,7 @@ tasks.named('check') {
     dependsOn iceStatusClientStoreTest
     dependsOn elementStatusRenderRouteTest
     dependsOn clientWorldLifecycleGuardTest
+    dependsOn mobEditorV2UiModelTest
 }
 
 tasks.named('test') {

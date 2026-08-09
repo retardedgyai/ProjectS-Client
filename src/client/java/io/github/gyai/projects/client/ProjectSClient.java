@@ -81,6 +81,12 @@ public final class ProjectSClient implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(
                 MobEditorStatePayload.TYPE,
                 MobEditorStatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(
+                MobEditorV2RequestPayload.TYPE,
+                MobEditorV2RequestPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                MobEditorV2StatePayload.TYPE,
+                MobEditorV2StatePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(
                 BetaCapabilityAdvertisementPayload.TYPE,
                 BetaCapabilityAdvertisementPayload.CODEC);
@@ -123,6 +129,11 @@ public final class ProjectSClient implements ClientModInitializer {
                 MobEditorStatePayload.TYPE,
                 (payload, context) -> context.client().execute(
                         () -> MobEditorClientState.receive(payload.state()))
+        );
+        ClientPlayNetworking.registerGlobalReceiver(
+                MobEditorV2StatePayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> MobEditorClientState.receiveV2(payload.state()))
         );
         ClientPlayNetworking.registerGlobalReceiver(
                 BetaCapabilityAdvertisementPayload.TYPE,
