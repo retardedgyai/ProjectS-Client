@@ -1,8 +1,12 @@
 package io.github.gyai.projects.devtools.skillvfx;
 
+import java.util.*;
+
 /** Frontend-only fixed editor layout: tree | preview | inspector above timeline. */
 public final class SkillEditorLayout {
  public record Rect(int x,int y,int width,int height){} public record Bounds(Rect tree,Rect preview,Rect inspector,Rect timeline){}
+ /** Six always-reachable primary actions; the screen uses the same right-aligned two-row order. */
+ public List<Rect> primaryActions(int width){int[] widths={52,66,84,72,58,58};int right=Math.max(0,width)-8,y=width<760?32:8;ArrayList<Rect> out=new ArrayList<>();for(int value:widths){right-=value;out.add(new Rect(right,y,value,20));right-=4;}return List.copyOf(out);}
  private int left=190,right=240,bottom=120;private boolean tree=true,preview=true,inspector=true,timeline=true;
  public Bounds bounds(int width,int height){
   int w=Math.max(0,width),h=Math.max(0,height),top=Math.min(52,h),body=Math.max(0,h-top);
@@ -16,6 +20,9 @@ public final class SkillEditorLayout {
  }
  /** Number of complete inspector rows which fit with the persistent pager. */
  public int inspectorPageSize(Rect inspector){return Math.max(1,(inspector.height()-42)/30);}
+ /** Compact left-side title that cannot intrude into the fixed 110px pager reservation. */
+ public String inspectorTitle(SkillVfxModel.PrimitiveType type,int first,int last,int total,Rect inspector){return inspector.width()<=260?"詳細 "+(first+1)+"/"+total:SkillVfxDisplay.primitive(type)+"  ("+type+")  "+(first+1)+"〜"+last+" / "+total;}
+ public int inspectorTitleWidth(Rect inspector){return Math.max(0,inspector.width()-110);}
  /** Compact UI uses these values directly for real widgets, keeping 640x360 reachability testable without Minecraft. */
  public int treeNodeRows(Rect tree){return Math.max(1,(tree.height()-114)/20);}
  public int treeActionRows(Rect tree){return Math.max(0,(tree.height()-28)/22);}
