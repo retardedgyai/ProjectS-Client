@@ -18,6 +18,15 @@ public final class SkillVfxSelection {
         }
         return new Value(SkillVfxModel.Hook.CAST, null, null);
     }
+    /** Document command selection wins after undo/redo; otherwise retain the live tree selection. */
+    public static Value reconcile(AbilityVisualEditorDocument document, Value current) {
+        if(document!=null&&document.selection().primaryId()!=null) {
+            String selected=document.selection().primaryId();
+            for(var binding:document.visual().hooks()) for(var emission:binding.emissions()) for(var primitive:emission.primitives())
+                if(Objects.equals(primitive.id(),selected)) return new Value(binding.hook(),emission.id(),primitive.id());
+        }
+        return resolve(document,current);
+    }
     private static boolean valid(AbilityVisualEditorDocument document, Value value) {
         if (value.hook() == SkillVfxModel.Hook.TRAVEL) return false;
         if (value.emissionId() == null) return value.primitiveId() == null;
