@@ -16,7 +16,9 @@ public final class AbilityVfxParticlePlanner {
             if(primitive.appearance().kind()!=AbilityVfx.AppearanceKind.PARTICLE||!active.test(primitive))continue;
             int requested=AbilityVfxParticlePolicy.density(primitive.type()==AbilityVfx.Type.BURST?primitive.count():primitive.density(),quality,particleStatus);
             int allowed=AbilityVfxParticlePolicy.allow(requested,cueUsed,tickUsed+result.size());if(allowed<=0)break;
-            List<AbilityVfx.Command> commands=AbilityVfx.sample(primitive,cue.frame(),progress.value(primitive),quality);
+            AbilityVfxMotionPlanner.Plan motion =
+                    AbilityVfxMotionPlanner.plan(primitive.motion(), progress.value(primitive));
+            List<AbilityVfx.Command> commands=AbilityVfx.sample(primitive,cue.frame(),motion,quality);
             for(int index=0;index<Math.min(allowed,commands.size());index++){AbilityVfx.Command command=commands.get(index);result.add(new Spawn(primitive.appearance(),command.b()==null?command.a():command.b()));}
             cueUsed+=Math.min(allowed,commands.size());if(tickUsed+result.size()>=AbilityVfxParticlePolicy.PER_TICK)break;
         }

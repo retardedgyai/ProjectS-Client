@@ -1,6 +1,7 @@
 package io.github.gyai.projects.devtools.skillvfx;
 
 import io.github.gyai.projects.client.vfx.AbilityVfx;
+import io.github.gyai.projects.client.vfx.MotionSpec;
 import io.github.gyai.projects.client.vfx.SupportedAppearanceCatalog;
 
 import java.util.*;
@@ -22,19 +23,22 @@ public final class SkillVfxModel {
     }
     public record Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width,
                             int density, long seed, Vec offset, double yaw, Map<String, Scalar> values,
-                            List<Vec> controls, Appearance appearance) {
+                            List<Vec> controls, Appearance appearance, MotionSpec motion) {
         public Primitive {
             requireId(id); Objects.requireNonNull(type); Objects.requireNonNull(offset);
             if (delayTicks < 0 || durationTicks < 1 || durationTicks > 1200 || width <= 0 || !Double.isFinite(width) || density < 1 || density > 256) throw new IllegalArgumentException("primitive bounds");
-            values = Collections.unmodifiableMap(new TreeMap<>(values == null ? Map.of() : values)); appearance=appearance==null?Appearance.DEBUG_QUAD:appearance;
+            values = Collections.unmodifiableMap(new TreeMap<>(values == null ? Map.of() : values)); appearance=appearance==null?Appearance.DEBUG_QUAD:appearance; motion=motion==null?MotionSpec.LEGACY_DEFAULT:motion;
+            motion.validateFor(AbilityVfx.Type.valueOf(type.name()));
             controls = List.copyOf(controls == null ? List.of() : controls); if (controls.size() > 8) throw new IllegalArgumentException("controls");
         }
         public Scalar value(String key) { return values.get(key); }
         /** Existing authored v1 construction stays DEBUG_QUAD by default. */
-        public Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width, int density, long seed, Vec offset, double yaw, Map<String, Scalar> values, List<Vec> controls) { this(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,Appearance.DEBUG_QUAD); }
-        public Primitive withValue(String key, Scalar value) { TreeMap<String, Scalar> copy=new TreeMap<>(values); if(value==null)copy.remove(key);else copy.put(key,value); return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,copy,controls,appearance); }
-        public Primitive withId(String value) { return new Primitive(value,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,appearance); }
-        public Primitive withAppearance(Appearance value) { return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,value); }
+        public Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width, int density, long seed, Vec offset, double yaw, Map<String, Scalar> values, List<Vec> controls) { this(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,Appearance.DEBUG_QUAD,MotionSpec.LEGACY_DEFAULT); }
+        public Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width, int density, long seed, Vec offset, double yaw, Map<String, Scalar> values, List<Vec> controls, Appearance appearance) { this(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,appearance,MotionSpec.LEGACY_DEFAULT); }
+        public Primitive withValue(String key, Scalar value) { TreeMap<String, Scalar> copy=new TreeMap<>(values); if(value==null)copy.remove(key);else copy.put(key,value); return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,copy,controls,appearance,motion); }
+        public Primitive withId(String value) { return new Primitive(value,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,appearance,motion); }
+        public Primitive withAppearance(Appearance value) { return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,value,motion); }
+        public Primitive withMotion(MotionSpec value) { return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,appearance,value); }
     }
     public record Emission(String id, int actionIndex, List<Primitive> primitives) {
         /** An emission is an authored unit, not an intermediate empty container. */

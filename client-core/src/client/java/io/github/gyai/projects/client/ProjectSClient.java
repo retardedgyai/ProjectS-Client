@@ -66,6 +66,8 @@ public final class ProjectSClient implements ClientModInitializer {
                 TelegraphPayload.TYPE, TelegraphPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(
                 AbilityVfxPayload.TYPE, AbilityVfxPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                AbilityVfxPayloadV2.TYPE, AbilityVfxPayloadV2.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(
                 TelegraphHelloPayload.TYPE,
                 TelegraphHelloPayload.CODEC);
@@ -104,6 +106,11 @@ public final class ProjectSClient implements ClientModInitializer {
         );
         ClientPlayNetworking.registerGlobalReceiver(
                 AbilityVfxPayload.TYPE,
+                (payload, context) -> context.client().execute(
+                        () -> AbilityVfxClientState.receive(payload.decoded()))
+        );
+        ClientPlayNetworking.registerGlobalReceiver(
+                AbilityVfxPayloadV2.TYPE,
                 (payload, context) -> context.client().execute(
                         () -> AbilityVfxClientState.receive(payload.decoded()))
         );

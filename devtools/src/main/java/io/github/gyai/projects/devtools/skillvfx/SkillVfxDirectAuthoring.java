@@ -1,6 +1,7 @@
 package io.github.gyai.projects.devtools.skillvfx;
 
 import io.github.gyai.projects.client.vfx.AbilityVfx;
+import io.github.gyai.projects.client.vfx.AbilityVfxMotionPlanner;
 import java.util.*;
 
 /**
@@ -24,8 +25,10 @@ public final class SkillVfxDirectAuthoring {
     public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame) {
         return guide(primitive,frame,null);
     }
+    /** Full-shape authoring guide: intentionally shows the complete geometry independent of playback Motion. */
     public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action) { try { if(primitive==null||frame==null)return List.of(); return AbilityVfx.sample(SkillVfxPreviewBuilder.convert(primitive,action),frame,1,AbilityVfx.Quality.HIGH); } catch(RuntimeException ignored) { return List.of(); } }
-    public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action,double progress) { try { if(primitive==null||frame==null)return List.of(); return AbilityVfx.sample(SkillVfxPreviewBuilder.convert(primitive,action),frame,Math.clamp(progress,0,1),AbilityVfx.Quality.HIGH); } catch(RuntimeException ignored) { return List.of(); } }
+    /** Playback-progress guide: use the exact production Motion planner/sampler path. */
+    public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action,double progress) { try { if(primitive==null||frame==null)return List.of(); AbilityVfx.Primitive converted=SkillVfxPreviewBuilder.convert(primitive,action); double t=Math.clamp(progress,0,1); return AbilityVfx.sample(converted,frame,AbilityVfxMotionPlanner.plan(converted.motion(),t),AbilityVfx.Quality.HIGH); } catch(RuntimeException ignored) { return List.of(); } }
     public static List<Handle> worldHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame){if(frame==null||p==null)return List.of();ArrayList<Handle> out=new ArrayList<>();for(var h:handles(p)){var local=new Vec(h.position().x()-p.offset().x(),h.position().y()-p.offset().y(),h.position().z()-p.offset().z());var oriented=h.kind().name().startsWith("AXIS_")?local:rotate(local,p.yaw());var q=new Vec(p.offset().x()+oriented.x(),p.offset().y()+oriented.y(),p.offset().z()+oriented.z());var world=frame.world(new AbilityVfx.Vec(q.x(),q.y(),q.z()));if(world!=null)out.add(new Handle(h.id(),h.label(),new Vec(world.x(),world.y(),world.z()),h.kind()));}return List.copyOf(out);}
     public static Projection fromBasis(Vec right,Vec up,Vec forward,Vec origin,double focal){Vec f=normalize(forward),r=normalize(right.add(f.scale(-dot(right,f)))),u=normalize(up.add(f.scale(-dot(up,f))).add(r.scale(-dot(up,r))));return new Projection(r,u,f,origin,focal,1);}
     public static Projection fromFov(Vec forward,Vec worldUp,Vec origin,double verticalFovRadians,int guiHeight,double guiScale){if(guiHeight<=0||verticalFovRadians<=0||verticalFovRadians>=Math.PI||guiScale<=0)throw new IllegalArgumentException("fov");Vec f=normalize(forward),reference=Math.abs(dot(normalize(worldUp),f))>.999?new Vec(0,0,1):worldUp,r=normalize(cross(reference,f)),u=normalize(cross(f,r));return new Projection(r,u,f,origin,(guiHeight/2d)/Math.tan(verticalFovRadians/2),guiScale);}
@@ -62,7 +65,7 @@ public final class SkillVfxDirectAuthoring {
         var o=p.offset();return switch(h.kind()){case AXIS_X->String.format(Locale.ROOT,"X %.2f",o.x());case AXIS_Y->String.format(Locale.ROOT,"Y %.2f",o.y());case AXIS_Z->String.format(Locale.ROOT,"Z %.2f",o.z());case RADIUS,HEIGHT,TURNS->{String k=switch(h.kind()){case RADIUS->"radius";case HEIGHT->"height";case TURNS->"turns";default->"";};yield p.value(k) instanceof SkillVfxModel.Literal v?String.format(Locale.ROOT,"%.2f",v.value()):"";}default->"";};
     }
     private static Optional<Double> literal(SkillVfxModel.Primitive p,String key){return p.value(key) instanceof SkillVfxModel.Literal v?Optional.of(v.value()):Optional.empty();}
-    private static SkillVfxModel.Primitive copy(SkillVfxModel.Primitive p,SkillVfxModel.Vec o,Map<String,SkillVfxModel.Scalar> v,List<SkillVfxModel.Vec> c){return new SkillVfxModel.Primitive(p.id(),p.type(),p.delayTicks(),p.durationTicks(),p.argb(),p.width(),p.density(),p.seed(),o,p.yaw(),v,c,p.appearance());}
+    private static SkillVfxModel.Primitive copy(SkillVfxModel.Primitive p,SkillVfxModel.Vec o,Map<String,SkillVfxModel.Scalar> v,List<SkillVfxModel.Vec> c){return new SkillVfxModel.Primitive(p.id(),p.type(),p.delayTicks(),p.durationTicks(),p.argb(),p.width(),p.density(),p.seed(),o,p.yaw(),v,c,p.appearance(),p.motion());}
     private static double clamp(double n){return Math.clamp(n,-128,128);}
     private static Vec rotate(Vec v,double yaw){double c=Math.cos(yaw),s=Math.sin(yaw);return new Vec(v.x()*c+v.z()*s,v.y(),-v.x()*s+v.z()*c);}
     private static double dot(Vec a,Vec b){return a.x*b.x+a.y*b.y+a.z*b.z;}

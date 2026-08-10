@@ -39,11 +39,14 @@ public final class ProjectSDevTools implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(SkillEditorStatePayload.TYPE, SkillEditorStatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SkillEditorRequestPayloadV2.TYPE, SkillEditorRequestPayloadV2.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(SkillEditorStatePayloadV2.TYPE, SkillEditorStatePayloadV2.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SkillEditorRequestPayloadV3.TYPE, SkillEditorRequestPayloadV3.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SkillEditorStatePayloadV3.TYPE, SkillEditorStatePayloadV3.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(BalanceStatePayload.TYPE, (payload, context) -> BalanceClientState.receive(payload.state()));
         ClientPlayNetworking.registerGlobalReceiver(MobEditorStatePayload.TYPE, (payload, context) -> context.client().execute(() -> MobEditorClientState.receive(payload.state())));
         ClientPlayNetworking.registerGlobalReceiver(MobEditorV2StatePayload.TYPE, (payload, context) -> context.client().execute(() -> MobEditorClientState.receiveV2(payload.state())));
         ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayload.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receive(payload.state())));
         ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayloadV2.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receiveV2(payload.state())));
+        ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayloadV3.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receiveV3(payload.state())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { BalanceClientState.reset(); MobEditorClientState.reset(); SkillEditorClientState.reset(); });
         ProjectSMenuExtensions.register(new ProjectSMenuExtension("projects.devtools", "Developer Tools", "開発者向け機能（サーバー権限が必要です）", () -> true, ProjectSDevToolsMenuScreen::open));
     }
