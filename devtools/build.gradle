@@ -16,7 +16,11 @@ java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; sourceCompati
 tasks.register('mobEditorV2UiModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.client.MobEditorV2UiModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
 tasks.register('projectSUiLogicTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.client.ui.ProjectSUiLogicTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
 tasks.register('devToolsBoundaryTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.DevToolsBoundaryTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
-tasks.named('check') { dependsOn 'mobEditorV2UiModelTest', 'projectSUiLogicTest', 'devToolsBoundaryTest' }
+tasks.register('skillVfxEditorModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorProtocolParityTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorProtocolParityTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('editorTimelineModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorUiTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorUiTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.named('check') { dependsOn 'mobEditorV2UiModelTest', 'projectSUiLogicTest', 'devToolsBoundaryTest', 'skillVfxEditorModelTest', 'skillVfxEditorProtocolParityTest', 'editorTimelineModelTest', 'skillVfxEditorUiTest' }
 tasks.register('verifyDevToolsArtifact') {
     dependsOn tasks.named('jar'), project(':client-core').tasks.named('jar')
     doLast {
