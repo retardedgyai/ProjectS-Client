@@ -1,5 +1,8 @@
 package io.github.gyai.projects.devtools.skillvfx;
 
+import io.github.gyai.projects.client.vfx.AbilityVfx;
+import io.github.gyai.projects.client.vfx.SupportedAppearanceCatalog;
+
 import java.util.*;
 
 /** Immutable transport-independent v0.1 Skill/VFX snapshot.  The wire codec and widgets both use this shape. */
@@ -12,18 +15,26 @@ public final class SkillVfxModel {
     public record Literal(double value) implements Scalar { public Literal { if (!Double.isFinite(value)) throw new IllegalArgumentException("scalar"); } }
     public record FromGameplay(ActionField field) implements Scalar { public FromGameplay { Objects.requireNonNull(field); } }
     public record Vec(double x, double y, double z) { public Vec { if (!Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(z)) throw new IllegalArgumentException("vector"); } }
+    public record Appearance(AbilityVfx.AppearanceKind kind, String id) {
+        public static final Appearance DEBUG_QUAD = new Appearance(AbilityVfx.AppearanceKind.DEBUG_QUAD, SupportedAppearanceCatalog.DEBUG_QUAD);
+        public Appearance { if (!SupportedAppearanceCatalog.supports(kind,id)) throw new IllegalArgumentException("appearance"); }
+        public static Appearance particle(String id) { return new Appearance(AbilityVfx.AppearanceKind.PARTICLE,id); }
+    }
     public record Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width,
                             int density, long seed, Vec offset, double yaw, Map<String, Scalar> values,
-                            List<Vec> controls) {
+                            List<Vec> controls, Appearance appearance) {
         public Primitive {
             requireId(id); Objects.requireNonNull(type); Objects.requireNonNull(offset);
             if (delayTicks < 0 || durationTicks < 1 || durationTicks > 1200 || width <= 0 || !Double.isFinite(width) || density < 1 || density > 256) throw new IllegalArgumentException("primitive bounds");
-            values = Collections.unmodifiableMap(new TreeMap<>(values == null ? Map.of() : values));
+            values = Collections.unmodifiableMap(new TreeMap<>(values == null ? Map.of() : values)); appearance=appearance==null?Appearance.DEBUG_QUAD:appearance;
             controls = List.copyOf(controls == null ? List.of() : controls); if (controls.size() > 8) throw new IllegalArgumentException("controls");
         }
         public Scalar value(String key) { return values.get(key); }
-        public Primitive withValue(String key, Scalar value) { TreeMap<String, Scalar> copy=new TreeMap<>(values); if(value==null)copy.remove(key);else copy.put(key,value); return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,copy,controls); }
-        public Primitive withId(String value) { return new Primitive(value,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls); }
+        /** Existing authored v1 construction stays DEBUG_QUAD by default. */
+        public Primitive(String id, PrimitiveType type, int delayTicks, int durationTicks, int argb, double width, int density, long seed, Vec offset, double yaw, Map<String, Scalar> values, List<Vec> controls) { this(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,Appearance.DEBUG_QUAD); }
+        public Primitive withValue(String key, Scalar value) { TreeMap<String, Scalar> copy=new TreeMap<>(values); if(value==null)copy.remove(key);else copy.put(key,value); return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,copy,controls,appearance); }
+        public Primitive withId(String value) { return new Primitive(value,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,appearance); }
+        public Primitive withAppearance(Appearance value) { return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,value); }
     }
     public record Emission(String id, int actionIndex, List<Primitive> primitives) {
         public Emission { requireId(id); if(actionIndex < -1) throw new IllegalArgumentException("action index"); primitives=List.copyOf(primitives==null?List.of():primitives); unique(primitives.stream().map(Primitive::id).toList()); }
