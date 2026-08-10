@@ -12,6 +12,7 @@ import io.github.gyai.projects.client.ui.widget.ProjectSTextField;
 import io.github.gyai.projects.client.ui.widget.ProjectSToast;
 import io.github.gyai.projects.devtools.skillvfx.*;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfxMinecraftPreviewController;
+import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfxWorldPreviewController;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -26,12 +27,12 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     private final SkillGameplayPanel gameplayPanel=new SkillGameplayPanel();
     private final SkillVisualTreePanel treePanel=new SkillVisualTreePanel();
     private final SkillVfxPreviewController preview=new SkillVfxPreviewController();
-    private boolean draggingLeft, draggingRight, draggingBottom, displaySettings;
+    private boolean draggingLeft, draggingRight, draggingBottom, displaySettings, previewDetails;
     private SkillVfxModel.Hook hook=SkillVfxModel.Hook.CAST;
     private String emissionId, primitiveId, localError="";
     private AbilityVisualEditorDocument selectionDocument;
     private ProjectSButton undoButton,redoButton,applyButton,revertButton;
-    private long observedRevision=-1; private int headerControlY=8,inspectorPage,treeOffset; private boolean treeActions;
+    private long observedRevision=-1; private int headerControlY=8,inspectorPage,treeOffset,controlPointOffset; private boolean treeActions;
 
     public SkillEditorScreen(Screen parent){super(Component.literal("スキル VFX エディター"));this.parent=parent;}
     @Override protected void init(){ rebuildWidgets(); if(SkillEditorClientState.document()==null&&!SkillEditorClientState.pending()&&!SkillEditorClientState.selectedAbility().isBlank())SkillEditorClientState.fetch(SkillEditorClientState.selectedAbility()); }
@@ -44,12 +45,13 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     }
     private void resolveSelection(AbilityVisualEditorDocument doc){
         var selected=SkillVfxSelection.resolve(doc,null);
-        hook=selected.hook(); emissionId=selected.emissionId(); primitiveId=selected.primitiveId(); preview.hook(hook);
+        hook=selected.hook(); emissionId=selected.emissionId(); primitiveId=selected.primitiveId(); controlPointOffset=0; preview.hook(hook);
         if(doc!=null&&selected.selected()&&!Objects.equals(doc.selection().primaryId(),primitiveId))doc.select("primitive",primitiveId);
     }
     private void reconcileSelection(AbilityVisualEditorDocument doc){
-        if(doc==null)return;var selected=SkillVfxSelection.resolve(doc,new SkillVfxSelection.Value(hook,emissionId,primitiveId));
+        if(doc==null)return;String priorPrimitive=primitiveId;var selected=SkillVfxSelection.resolve(doc,new SkillVfxSelection.Value(hook,emissionId,primitiveId));
         hook=selected.hook();emissionId=selected.emissionId();primitiveId=selected.primitiveId();preview.hook(hook);
+        if(!Objects.equals(priorPrimitive,primitiveId))controlPointOffset=0;
         if(selected.selected()&&!Objects.equals(doc.selection().primaryId(),primitiveId))doc.select("primitive",primitiveId);
         if(!selected.selected()&&doc.selection().primaryId()!=null)doc.select("tree",null);
     }
@@ -58,7 +60,7 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
         var cap=SkillEditorUiController.header(doc,SkillEditorClientState.pending(),SkillEditorClientState.connected(),SkillEditorClientState.permitted()&&!SkillEditorClientState.refreshRequired()&&!SkillEditorClientState.sessionApplyDenied(),has);
         int x=8; add(button(x,8,150,abilityLabel(),this::cycleAbility)); x+=154;
         add(button(x,8,72,"表示設定",()->{displaySettings=!displaySettings;rebuildWidgets();}).selected(displaySettings));
-        headerControlY=width<760?32:8; int right=width-8; right=place(right,52,"閉じる",this::onClose,true,null); right=place(right,66,"変更を破棄",this::confirmRevert,cap.revert(),"サーバー上の一時反映を破棄し、基準の VFX に戻します。"); right=place(right,84,"変更を反映",this::apply,cap.apply(),"現在の下書きをこの開発セッションに一時反映します。サーバー再起動で解除されます。"); right=place(right,72,"再読み込み",this::confirmRefresh,cap.refresh(),"サーバーの最新状態を読み込みます。未反映の変更は失われます。"); right=place(right,58,"やり直す",()->{if(doc!=null)doc.redo();rebuildWidgets();},cap.redo(),null); place(right,58,"元に戻す",()->{if(doc!=null)doc.undo();rebuildWidgets();},cap.undo(),null);
+        headerControlY=width<760?32:8; int right=width-8; right=place(right,52,"閉じる",this::onClose,true,null); right=place(right,92,"ワールドで確認",this::enterWorldPreview,worldPreviewEntryAllowed(),"この画面を閉じて、未反映の下書きをワールド内で確認します。"); right=place(right,66,"変更を破棄",this::confirmRevert,cap.revert(),"サーバー上の一時反映を破棄し、基準の VFX に戻します。"); right=place(right,84,"変更を反映",this::apply,cap.apply(),"現在の下書きをこの開発セッションに一時反映します。サーバー再起動で解除されます。"); right=place(right,72,"再読み込み",this::confirmRefresh,cap.refresh(),"サーバーの最新状態を読み込みます。未反映の変更は失われます。"); right=place(right,58,"やり直す",()->{if(doc!=null)doc.redo();rebuildWidgets();},cap.redo(),null); place(right,58,"元に戻す",()->{if(doc!=null)doc.undo();rebuildWidgets();},cap.undo(),null);
     }
     private void buildDisplaySettings(){int x=8,y=56,w=Math.max(110,Math.min(180,(width-28)/2));add(button(x,y,w,layout.treeVisible()?"ツリーを隠す":"ツリーを表示",()->{layout.visibleTree(!layout.treeVisible());rebuildWidgets();}));add(button(x+w+4,y,w,layout.previewVisible()?"プレビューを隠す":"プレビューを表示",()->{layout.visiblePreview(!layout.previewVisible());rebuildWidgets();}));y+=24;add(button(x,y,w,layout.inspectorVisible()?"詳細を隠す":"詳細を表示",()->{layout.visibleInspector(!layout.inspectorVisible());rebuildWidgets();}));add(button(x+w+4,y,w,layout.timelineVisible()?"タイムラインを隠す":"タイムラインを表示",()->{layout.visibleTimeline(!layout.timelineVisible());rebuildWidgets();}));y+=24;add(button(x,y,Math.min(w,120),"リセット",()->{layout.reset();rebuildWidgets();}));drawLater("表示するパネルを切り替えます。もう一度「表示設定」で編集へ戻ります。",x,y+26);}
     private int place(int right,int width,String label,Runnable action,boolean active,String tip){ right-=width;var b=button(right,headerControlY,width,label,action);b.active=active;if(label.equals("元に戻す"))undoButton=b;if(label.equals("やり直す"))redoButton=b;if(label.equals("変更を反映"))applyButton=b;if(label.equals("変更を破棄"))revertButton=b;if(tip!=null)b.setTooltip(Tooltip.create(Component.literal(tip)));add(b);return right-4; }
@@ -94,33 +96,34 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
         var emissionUp=button(x,y+88,column,"発生を上へ",()->moveEmission(-1));emissionUp.active=canMoveEmission(doc,-1);add(emissionUp);var emissionDown=button(x+column+4,y+88,column,"発生を下へ",()->moveEmission(1));emissionDown.active=canMoveEmission(doc,1);add(emissionDown);
     }
     private void buildPreview(AbilityVisualEditorDocument doc,SkillEditorLayout.Rect r){
-        if(r.width()<=0||r.height()<=0)return;
-        var help=layout.previewHelp(r,font::width);int x=r.x()+6,y=help.controlsY(),w=Math.max(44,r.width()-12),allowed=SkillEditorClientState.previewAllowed()?1:0;
-        for(var line:help.lines())drawLater(line.text(),line.bounds().x(),line.bounds().y());
-        var play=button(x,y,Math.min(72,w),preview.timeline().playing()?"一時停止":"再生",this::play);play.active=allowed==1;add(play);add(button(x+76,y,Math.min(48,w),"停止",this::stopPreview));var restart=button(x+128,y,Math.min(68,w),"最初から",this::restart);restart.active=allowed==1;add(restart);y+=24;add(button(x,y,Math.min(72,w),preview.timeline().loop()?"ループ: オン":"ループ: オフ",()->{preview.loop();rebuildWidgets();}));add(button(x+76,y,Math.min(82,w),"再生速度 "+preview.timeline().multiplier()+"x",()->{preview.cycleSpeed();rebuildWidgets();}));y+=24;add(button(x,y,Math.min(76,w),"表示品質 "+SkillVfxDisplay.quality(preview.quality()),()->{preview.cycleQuality();AbilityVfxLocalPreview.quality(toCoreQuality());rebuildWidgets();}));var anchor=button(x+80,y,Math.min(100,w),"基準 "+SkillVfxDisplay.anchor(preview.anchor()),()->{preview.cycleAnchor();rebuildWidgets();});anchor.setTooltip(Tooltip.create(Component.literal("プレビューの基準位置を、プレイヤー位置または前方3mに切り替えます。")));add(anchor);var p=primitive(doc);var status=layout.previewStatus(r,SkillVfxDisplay.hook(hook),p==null?"":SkillVfxDisplay.primitive(p.type()),preview.anchor()==SkillVfxPreviewController.Anchor.PLAYER?"プレイヤー周囲":"プレイヤー前方3m",allowed==1,localError,font::width);for(var line:status.lines())drawLater(line.text(),line.bounds().x(),line.bounds().y());
+        if(r.width()<=0||r.height()<=0)return;var p=primitive(doc);var page=layout.previewPage(r,previewDetails,SkillVfxDisplay.hook(hook),p==null?"":SkillVfxDisplay.primitive(p.type()),preview.anchor()==SkillVfxPreviewController.Anchor.PLAYER?"プレイヤー周囲":"プレイヤー前方3m",SkillEditorClientState.previewAllowed(),localError,font::width);
+        add(button(page.toggle().x(),page.toggle().y(),page.toggle().width(),previewDetails?"確認へ戻る":"詳細操作",()->{previewDetails=!previewDetails;rebuildWidgets();}));for(var line:page.lines())drawLater(line.text(),line.bounds().x(),line.bounds().y());
+        if(!previewDetails){var world=button(page.world().x(),page.world().y(),page.world().width(),"ワールドで確認",this::enterWorldPreview);world.active=worldPreviewEntryAllowed();add(world);return;}
+        var play=button(page.play().x(),page.play().y(),page.play().width(),preview.timeline().playing()?"一時停止":"再生",this::play);play.active=SkillEditorClientState.previewAllowed();add(play);add(button(page.stop().x(),page.stop().y(),page.stop().width(),"停止",this::stopPreview));var restart=button(page.restart().x(),page.restart().y(),page.restart().width(),"最初から",this::restart);restart.active=SkillEditorClientState.previewAllowed();add(restart);add(button(page.loop().x(),page.loop().y(),page.loop().width(),preview.timeline().loop()?"ループ: オン":"ループ: オフ",()->{preview.loop();rebuildWidgets();}));add(button(page.speed().x(),page.speed().y(),page.speed().width(),"再生速度 "+preview.timeline().multiplier()+"x",()->{preview.cycleSpeed();rebuildWidgets();}));add(button(page.quality().x(),page.quality().y(),page.quality().width(),"表示品質 "+SkillVfxDisplay.quality(preview.quality()),()->{preview.cycleQuality();AbilityVfxLocalPreview.quality(toCoreQuality());rebuildWidgets();}));var anchor=button(page.anchor().x(),page.anchor().y(),page.anchor().width(),"基準 "+SkillVfxDisplay.anchor(preview.anchor()),()->{preview.cycleAnchor();rebuildWidgets();});anchor.setTooltip(Tooltip.create(Component.literal("プレビューの基準位置を、プレイヤー位置または前方3mに切り替えます。")));add(anchor);
     }
     private void buildInspector(AbilityVisualEditorDocument doc,SkillEditorLayout.Rect r){
         if(r.width()<=0||r.height()<=0)return;
         var header=layout.inspectorHeader(r);int x=header.content().x(),w=Math.max(72,header.content().width());
         var p=primitive(doc);
         if(p==null){drawLater("VFX パーツが選択されていません。左のツリーからパーツを選んでください。",x,header.content().y());drawLater("例: 発動時 > 発生 > 点",x,header.content().y()+14);return;}
-        var fields=AbilityVisualPropertySchemas.descriptors(p.type()); int pageSize=(p.type()==SkillVfxModel.PrimitiveType.LINE||p.type()==SkillVfxModel.PrimitiveType.BEZIER)?1:layout.inspectorPageSize(r), pages=Math.max(1,(fields.size()+pageSize-1)/pageSize); inspectorPage=Math.clamp(inspectorPage,0,pages-1); int first=inspectorPage*pageSize,last=Math.min(fields.size(),first+pageSize);
+        var fields=AbilityVisualPropertySchemas.descriptors(p.type()); var properties=new ArrayList<SkillEditorLayout.InspectorProperty>();for(var descriptor:fields){int inputHeight=descriptor.id().equals("controlPoints")?20+Math.min(2,p.controls().size())*30:18;properties.add(new SkillEditorLayout.InspectorProperty(descriptor.id(),descriptor.displayName(),AbilityVisualPropertySchemas.description(descriptor.id()),inputHeight));}var page=layout.inspectorPage(r,properties,inspectorPage,font::width,font.lineHeight);inspectorPage=page.page();int first=0;for(int i=0;i<inspectorPage;i++)first+=layout.inspectorPage(r,properties,i,font::width,font.lineHeight).entries().size();int last=first+page.entries().size(),pages=page.pages();
         drawLater(layout.inspectorTitle(p.type(),first,last,fields.size(),r),header.title().x(),header.title().y());drawLater(layout.inspectorPageLabel(first,last,fields.size()),header.page().x(),header.page().y()+5);
         var previous=button(header.previous().x(),header.previous().y(),header.previous().width(),"前へ",()->{inspectorPage=Math.max(0,inspectorPage-1);rebuildWidgets();});previous.active=inspectorPage>0;add(previous);
         var nextPage=button(header.next().x(),header.next().y(),header.next().width(),"次へ",()->{inspectorPage=Math.min(pages-1,inspectorPage+1);rebuildWidgets();});nextPage.active=inspectorPage+1<pages;add(nextPage);
-        int fieldIndex=0;for(var descriptor:fields.subList(first,last)){
+        for(var entry:page.entries()){
+            var descriptor=fields.stream().filter(value->value.id().equals(entry.property().id())).findFirst().orElseThrow();
             String field=descriptor.id(), fieldLabel=descriptor.displayName();
             Object value=doc.selectedValue(field);
-            var row=layout.inspectorField(r,fieldIndex++);int y=row.input().y();drawLater(fieldLabel,row.label().x(),row.label().y());
+            var row=entry.field();int y=row.input().y();drawWrapped(fieldLabel,row.label());
             if(field.equals("argb")){
-                var box=new ProjectSTextField(font,x,y,w,18,Component.literal("色 (ARGB)"),Component.literal("#AARRGGBB"));
+                var box=new ProjectSTextField(font,x,y,w,18,Component.empty(),Component.literal("#AARRGGBB"));
                 box.setValue(SkillEditorUiController.argb(p.argb()));
                 box.setResponder(raw->{var parsed=SkillEditorUiController.argb(raw);box.error(Component.literal(parsed.error()));if(parsed.valid())setPrimitive(p.id(),current->withArgb(current,parsed.value()),false);});
-                add(box);drawLater(AbilityVisualPropertySchemas.description(field),row.help().x(),row.help().y());continue;
+                add(box);drawWrapped(AbilityVisualPropertySchemas.description(field),row.help());continue;
             }
             if(field.equals("controlPoints")){
                 var controls=p.controls();
-                drawLater(AbilityVisualPropertySchemas.description(field),row.help().x(),row.help().y());
+                drawWrapped(AbilityVisualPropertySchemas.description(field),row.help());
                 if(p.type()==SkillVfxModel.PrimitiveType.LINE&&controls.isEmpty()){
                     add(button(x,y,Math.min(120,w),"始点・終点を設定",()->setControlPoints(doc,p.id(),current->List.of(new SkillVfxModel.Vec(0,0,0),new SkillVfxModel.Vec(0,0,1)),true)));continue;
                 }
@@ -128,19 +131,19 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
                     if(controls.size()==3)add(button(x,y,Math.min(120,w),"制御点2を追加",()->setControlPoints(doc,p.id(),current->{var nextControls=new ArrayList<>(current.controls());nextControls.add(current.controls().getLast());return nextControls;},true)));
                     if(controls.size()==4)add(button(x,y,Math.min(120,w),"制御点2を削除",()->setControlPoints(doc,p.id(),current->List.of(current.controls().get(0),current.controls().get(1),current.controls().get(3)),true)));
                 }
-                int coordinateY=row.help().y()+row.help().height()+1;for(int point=0;point<controls.size();point++){
+                int firstPoint=Math.clamp(controlPointOffset,0,Math.max(0,controls.size()-2));if(controls.size()>2){add(button(x+124,y,Math.max(25,w-124),"座標 "+(firstPoint+1)+"〜"+Math.min(controls.size(),firstPoint+2),()->{controlPointOffset=layout.nextControlPointOffset(controls.size(),controlPointOffset);rebuildWidgets();}));}int coordinateY=row.input().y()+20;for(int point=firstPoint;point<Math.min(controls.size(),firstPoint+2);point++){
                     for(int axis=0;axis<3;axis++){
                         final int pi=point,ai=axis;
                         double n=axis==0?controls.get(point).x():axis==1?controls.get(point).y():controls.get(point).z();
                         String pointName=p.type()==SkillVfxModel.PrimitiveType.LINE?(point==0?"始点":"終点"):(point==0?"始点":point==controls.size()-1?"終点":"制御点"+point);
-                        add(number(x+axis*(w/3),coordinateY,Math.max(25,w/3-2),pointName+" "+"XYZ".charAt(axis),n,v->setControlCoordinate(doc,p.id(),pi,ai,v)));
-                    } coordinateY+=18;
+                        int labelWidth=axis==0?42:0,fieldWidth=Math.max(25,(w-42)/3-2);if(axis==0)drawLater(pointName,x,coordinateY+4);add(number(x+42+axis*((w-42)/3),coordinateY,fieldWidth,"XYZ".substring(axis,axis+1),n,v->setControlCoordinate(doc,p.id(),pi,ai,v)));
+                    } coordinateY+=30;
                 } continue;
             }
             if(field.equals("count")){
                 double count=value instanceof SkillVfxModel.Literal literal?Math.clamp(Math.rint(literal.value()),1,64):8;
-                add(new ProjectSNumberField(font,x,y,w,18,Component.literal(fieldLabel),count,1,64,1,0,"",v->writeDescriptor(descriptor,doc,new SkillVfxModel.Literal((int)v))));
-                drawLater("火花の数は 1〜64 の固定値です。",row.help().x(),row.help().y());continue;
+                add(new ProjectSNumberField(font,x,y,w,18,Component.empty(),count,1,64,1,0,"",v->writeDescriptor(descriptor,doc,new SkillVfxModel.Literal((int)v))));
+                drawWrapped("火花の数は 1〜64 の固定値です。",row.help());continue;
             }
             if(isScalar(field)){
                 SkillVfxModel.Scalar scalar=value instanceof SkillVfxModel.Scalar s?s:new SkillVfxModel.Literal(0);
@@ -156,15 +159,16 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
                         setPrimitive(p.id(),current->current.withValue(field,new SkillVfxModel.FromGameplay(all[(source.field().ordinal()+1)%all.length])),true);
                     }));
                 } else {
-                    add(number(x+98,y,Math.max(40,w-98),fieldLabel,((SkillVfxModel.Literal)scalar).value(),
+                    add(number(x+98,y,Math.max(40,w-98),"",((SkillVfxModel.Literal)scalar).value(),
                             v -> setPrimitive(p.id(), current -> current.withValue(field, new SkillVfxModel.Literal(v)),false)));
                 }
-                drawLater(AbilityVisualPropertySchemas.description(field),row.help().x(),row.help().y());continue;
+                drawWrapped(AbilityVisualPropertySchemas.description(field),row.help());continue;
             }
             double number=numberValue(p,field,value);
-            add(number(x,y,w,fieldLabel,number,v->{writeDescriptor(descriptor,doc,v);localError="";}));drawLater(AbilityVisualPropertySchemas.description(field),row.help().x(),row.help().y());
+            add(number(x,y,w,"",number,v->{writeDescriptor(descriptor,doc,v);localError="";}));drawWrapped(AbilityVisualPropertySchemas.description(field),row.help());
         }
     }
+    private void drawWrapped(String text,SkillEditorLayout.Rect bounds){int y=bounds.y();for(var line:layout.wrap(text,bounds.width(),font::width)){drawLater(line,bounds.x(),y);y+=font.lineHeight;}}
     private void buildTimeline(AbilityVisualEditorDocument doc,SkillEditorLayout.Rect r){
         if(r.width()<=0||r.height()<=0||doc==null)return;var bars=preview.timeline().bars(doc.visual(),hook);int duration=Math.max(1,bars.stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));
         var view=SkillVfxTimelinePresentation.layout(bars,duration,preview.timeline().ticks(),timelineViewport(r));
@@ -173,7 +177,7 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     }
     private ProjectSButton button(int x,int y,int w,String label,Runnable action){return new ProjectSButton(x,y,Math.max(1,w),20,Component.literal(label),ProjectSButton.Kind.SECONDARY,action);}
     @SuppressWarnings({"rawtypes","unchecked"}) private void writeDescriptor(io.github.gyai.projects.editor.core.PropertyDescriptor descriptor,AbilityVisualEditorDocument document,Object value){descriptor.write(document,value);afterMutation(false);}
-    private ProjectSNumberField number(int x,int y,int w,String label,double value,java.util.function.DoubleConsumer action){return new ProjectSNumberField(font,x,y,Math.max(25,w),18,Component.literal(label),value,-30_000_000,30_000_000,.1,3,"",action);}
+    private ProjectSNumberField number(int x,int y,int w,String unit,double value,java.util.function.DoubleConsumer action){return new ProjectSNumberField(font,x,y,Math.max(25,w),18,Component.empty(),value,-30_000_000,30_000_000,.1,3,unit,action);}
     private void add(ProjectSButton button){addRenderableWidget(button);} private void add(ProjectSTextField field){addRenderableWidget(field);} private void add(ProjectSNumberField field){addRenderableWidget(field);}
     private AbilityVisualEditorDocument document(){return SkillEditorClientState.document();} private SkillVfxModel.Emission emission(AbilityVisualEditorDocument doc){return doc==null||emissionId==null?null:doc.visual().emissions(hook).stream().filter(e->e.id().equals(emissionId)).findFirst().orElse(null);} private SkillVfxModel.Primitive primitive(AbilityVisualEditorDocument doc){if(doc==null||primitiveId==null)return null;for(var e:doc.visual().emissions(hook))if(e.id().equals(emissionId))for(var p:e.primitives())if(p.id().equals(primitiveId))return p;return null;}
     private static boolean isScalar(String field){return !Set.of("delayTicks","durationTicks","argb","opacity","width","density","seed","offsetX","offsetY","offsetZ","yaw","controlPoints","count").contains(field);}
@@ -197,7 +201,7 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     private void apply(){if(SkillEditorClientState.apply())toasts.show(ProjectSToast.Kind.INFO,Component.literal("スキル VFX エディター"),Component.literal("開発セッションへ一時反映しています…"),2500);else localError="VFX が有効でサーバー準備完了になるまで反映できません。";}
     private void confirmRefresh(){var d=document();if(d!=null&&d.dirty())modal.open(Component.literal("サーバーの状態を再読み込みしますか？"),Component.literal("未反映のローカル VFX 下書きは失われます。"),Component.literal("再読み込み"),SkillEditorClientState::refresh,Component.literal("キャンセル"),()->{},ProjectSModal.PrimaryKind.DANGER,true);else SkillEditorClientState.refresh();}
     private void confirmRevert(){modal.open(Component.literal("一時反映を破棄しますか？"),Component.literal("サーバーに基準 VFX への復帰を要求します。"),Component.literal("変更を破棄"),SkillEditorClientState::revert,Component.literal("キャンセル"),()->{},ProjectSModal.PrimaryKind.DANGER,true);}
-    @Override public void tick(){super.tick();var d=document();if(preview.timeline().playing()&&d!=null){int duration=Math.max(1,preview.timeline().bars(d.visual(),hook).stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));preview.timeline().advance(1,duration);AbilityVfxLocalPreview.seek(preview.timeline().ticks());if(preview.timeline().playing())AbilityVfxLocalPreview.play();}if(observedRevision!=SkillEditorClientState.updateRevision()){observedRevision=SkillEditorClientState.updateRevision();var f=SkillEditorClientState.feedback();if(f!=SkillEditorController.Feedback.NONE){ProjectSToast.Kind kind=switch(f){case APPLIED,REVERTED->ProjectSToast.Kind.SUCCESS;case STALE,CONFLICT,REFRESH_REQUIRED->ProjectSToast.Kind.WARNING;default->ProjectSToast.Kind.ERROR;};toasts.show(kind,Component.literal("スキル VFX エディター"),Component.literal(SkillEditorUiController.feedback(f,SkillEditorClientState.feedbackMessage())),4500);}rebuildWidgets();}}
+    @Override public void tick(){super.tick();advancePreview();if(observedRevision!=SkillEditorClientState.updateRevision()){observedRevision=SkillEditorClientState.updateRevision();var f=SkillEditorClientState.feedback();if(f!=SkillEditorController.Feedback.NONE){ProjectSToast.Kind kind=switch(f){case APPLIED,REVERTED->ProjectSToast.Kind.SUCCESS;case STALE,CONFLICT,REFRESH_REQUIRED->ProjectSToast.Kind.WARNING;default->ProjectSToast.Kind.ERROR;};toasts.show(kind,Component.literal("スキル VFX エディター"),Component.literal(SkillEditorUiController.feedback(f,SkillEditorClientState.feedbackMessage())),4500);}rebuildWidgets();}}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float tickProgress){var t=ProjectSThemeManager.get().activeTheme().tokens();graphics.fill(0,0,width,height,t.background());var d=document();int statusX=width<760?240:8,statusY=width<760?10:34;graphics.text(font,d!=null&&d.dirty()?"● 未反映の変更があります":"変更なし",statusX,statusY,t.textMuted(),false);if(!displaySettings){var b=layout.bounds(width,height);panel(graphics,b.tree(),"VFX ツリー");panel(graphics,b.preview(),"ワールド内プレビュー / 操作");panel(graphics,b.inspector(),"詳細");panel(graphics,b.timeline(),"VFX タイムライン");drawTimeline(graphics,d,b.timeline(),t);}else graphics.text(font,"表示設定",8,48,t.textPrimary(),false);super.extractRenderState(graphics,mouseX,mouseY,tickProgress);for(var label:labels)graphics.text(font,label.text(),label.x(),label.y(),t.textSecondary(),false);}
     private void drawTimeline(GuiGraphicsExtractor graphics,AbilityVisualEditorDocument doc,SkillEditorLayout.Rect r,io.github.gyai.projects.client.ui.theme.ProjectSThemeTokens t){
         if(doc==null||r.width()<=0||r.height()<=0)return;var bars=preview.timeline().bars(doc.visual(),hook);int duration=Math.max(1,bars.stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));
@@ -211,5 +215,16 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     @Override public boolean mouseDragged(MouseButtonEvent event,double deltaX,double deltaY){if(super.mouseDragged(event,deltaX,deltaY))return true;if(draggingLeft)layout.dragLeft((int)event.x(),width);else if(draggingRight)layout.dragRight((int)event.x(),width);else if(draggingBottom)layout.dragBottom((int)event.y(),height);else return false;rebuildWidgets();return true;}
     @Override public boolean mouseReleased(MouseButtonEvent event){if(draggingLeft||draggingRight||draggingBottom){draggingLeft=draggingRight=draggingBottom=false;return true;}return super.mouseReleased(event);}
     @Override public void onClose(){if(document()!=null&&document().dirty()){modal.open(Component.literal("未反映の変更を破棄しますか？"),Component.literal("送信していない DevTools の変更は失われます。"),Component.literal("破棄して閉じる"),this::closeEditor,Component.literal("キャンセル"),()->{},ProjectSModal.PrimaryKind.DANGER,true);return;}closeEditor();}
-    private void closeEditor(){preview.stop();AbilityVfxLocalPreview.closeEditor();minecraft.setScreen(parent);}
+    private void closeEditor(){SkillVfxWorldPreviewController.clear(this);preview.stop();AbilityVfxLocalPreview.closeEditor();minecraft.setScreen(parent);}
+    private boolean worldPreviewEntryAllowed(){return document()!=null&&!SkillEditorClientState.pending()&&SkillEditorClientState.previewAllowed()&&minecraft.getConnection()!=null&&minecraft.player!=null&&minecraft.level!=null&&minecraft.player.isAlive();}
+    private void enterWorldPreview(){if(!worldPreviewEntryAllowed()){localError="ワールド内プレビューを開始できる状態ではありません。";rebuildWidgets();return;}SkillVfxWorldPreviewController.enter(this);}
+    public boolean startWorldPreview(){if(!worldPreviewEntryAllowed())return false;stopPreview();var result=SkillVfxMinecraftPreviewController.play(document(),preview);if(!result.valid()){localError="ローカルプレビューを開始できません。";return false;}preview.play();AbilityVfxLocalPreview.quality(toCoreQuality());return true;}
+    public void worldPreviewToggle(){play();}
+    public void worldPreviewRestart(){restart();}
+    public void advanceDetachedWorldPreview(){advancePreview();}
+    public AbilityVisualEditorDocument worldPreviewDocument(){return document();}
+    public String worldPreviewHookLabel(){return SkillVfxDisplay.hook(hook);}
+    public String worldPreviewPrimitiveLabel(){var p=primitive(document());return p==null?"":SkillVfxDisplay.primitive(p.type());}
+    public String worldPreviewAnchorLabel(){return SkillVfxDisplay.anchor(preview.anchor());}
+    private void advancePreview(){var d=document();if(preview.timeline().playing()&&d!=null){int duration=Math.max(1,preview.timeline().bars(d.visual(),hook).stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));preview.timeline().advance(1,duration);AbilityVfxLocalPreview.seek(preview.timeline().ticks());if(preview.timeline().playing())AbilityVfxLocalPreview.play();}}
 }

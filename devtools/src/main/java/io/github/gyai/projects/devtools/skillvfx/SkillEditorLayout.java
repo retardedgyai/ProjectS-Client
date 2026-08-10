@@ -15,8 +15,14 @@ public final class SkillEditorLayout {
   public boolean nonOverlapping(){return !title.overlaps(page)&&!title.overlaps(previous)&&!title.overlaps(next)&&!page.overlaps(previous)&&!page.overlaps(next)&&!previous.overlaps(next);}
  }
  /** A standard field is always presented label, input, then Japanese help. */
- public record InspectorField(Rect label,Rect input,Rect help){
-  public boolean ordered(){return label.y()+label.height<=input.y()&&input.y()+input.height<=help.y();}
+ public record InspectorField(Rect label,Rect input,Rect feedback,Rect help){
+  public boolean ordered(){return label.y()+label.height<=input.y()&&input.y()+input.height<=feedback.y()&&feedback.y()+feedback.height<=help.y();}
+ }
+ /** Input height is part of the property contract: coordinate editors reserve every row. */
+ public record InspectorProperty(String id,String label,String help,int inputHeight) { }
+ public record InspectorEntry(InspectorProperty property,InspectorField field) { }
+ public record InspectorPage(List<InspectorEntry> entries,int pages,int page){
+  public boolean reachable(){return pages>0&&page>=0&&page<pages;}
  }
  /** Short Japanese lines avoid relying on global label clipping in the Preview panel. */
  public record PreviewHelpLine(String text,Rect bounds){
@@ -31,8 +37,16 @@ public final class SkillEditorLayout {
  public record PreviewStatus(List<PreviewStatusLine> lines){
   public boolean fits(Rect preview,ToIntFunction<String> measurer){return lines.stream().allMatch(line->line.bounds().within(preview)&&line.fits(measurer));}
  }
+ /** Bounded central-panel controls: primary world confirmation or secondary playback detail. */
+ public record PreviewPage(boolean detail,Rect toggle,Rect world,Rect play,Rect stop,Rect restart,Rect loop,Rect speed,Rect quality,Rect anchor,List<PreviewStatusLine> lines){
+  public boolean fits(Rect preview,ToIntFunction<String> measurer){return List.of(toggle,world,play,stop,restart,loop,speed,quality,anchor).stream().allMatch(rect->rect.width()==0||rect.within(preview))&&lines.stream().allMatch(line->line.bounds().within(preview)&&line.fits(measurer));}
+ }
  /** Six always-reachable primary actions; the screen uses the same right-aligned two-row order. */
  public List<Rect> primaryActions(int width){int[] widths={52,66,84,72,58,58};int right=Math.max(0,width)-8,y=width<760?32:8;ArrayList<Rect> out=new ArrayList<>();for(int value:widths){right-=value;out.add(new Rect(right,y,value,20));right-=4;}return List.copyOf(out);}
+ /** Header includes the same six actions plus the DevTools world-confirmation action. */
+ public List<Rect> headerActions(int width){int[] widths={52,92,66,84,72,58,58};int right=Math.max(0,width)-8,y=width<760?32:8;ArrayList<Rect> out=new ArrayList<>();for(int value:widths){right-=value;out.add(new Rect(right,y,value,20));right-=4;}return List.copyOf(out);}
+ /** Two coordinate rows fit safely in a compact inspector input region. */
+ public int nextControlPointOffset(int size,int current){if(size<=2)return 0;int last=Math.max(0,size-2),normalized=Math.clamp(current,0,last);return normalized>=last?0:Math.min(last,normalized+2);}
  private int left=190,right=240,bottom=120;private boolean tree=true,preview=true,inspector=true,timeline=true;
  public Bounds bounds(int width,int height){
   int w=Math.max(0,width),h=Math.max(0,height),top=Math.min(52,h),body=Math.max(0,h-top);
@@ -56,12 +70,27 @@ public final class SkillEditorLayout {
   Rect previous=new Rect(x+pageWidth+4,pagerY,previousWidth,20),next=new Rect(previous.x()+previous.width()+4,pagerY,nextWidth,20);
   return new InspectorHeader(title,page,previous,next,new Rect(x,pagerY+24,w,Math.max(0,inspector.y()+inspector.height()-6-(pagerY+24))));
  }
- /** Number of complete label/input/help rows which fit below the persistent pager. */
- public int inspectorPageSize(Rect inspector){return Math.max(1,inspectorHeader(inspector).content().height()/52);}
- public InspectorField inspectorField(Rect inspector,int index){
-  Rect content=inspectorHeader(inspector).content();int y=content.y()+Math.max(0,index)*52;
-  return new InspectorField(new Rect(content.x(),y,content.width(),10),new Rect(content.x(),y+12,content.width(),18),new Rect(content.x(),y+34,content.width(),10));
+ /**
+  * Builds pages from real glyph widths and input heights.  Minecraft's font is
+  * injected by the screen (font::width); tests use a wider Japanese measurer.
+  */
+ public InspectorPage inspectorPage(Rect inspector,List<InspectorProperty> properties,int requestedPage,ToIntFunction<String> measurer,int lineHeight){
+  Rect content=inspectorHeader(inspector).content();int usable=Math.max(1,content.height()),line=Math.max(1,lineHeight),gap=5;
+  ArrayList<List<InspectorProperty>> pages=new ArrayList<>();ArrayList<InspectorProperty> current=new ArrayList<>();int used=0;
+  for(var property:properties){int labelLines=Math.max(1,wrap(property.label(),Math.max(1,content.width()),measurer).size()),helpLines=Math.max(1,wrap(property.help(),Math.max(1,content.width()),measurer).size());int needed=labelLines*line+2+Math.max(18,property.inputHeight())+3+line+helpLines*line+gap;
+   if(!current.isEmpty()&&used+needed>usable){pages.add(List.copyOf(current));current.clear();used=0;}current.add(property);used+=needed;
+  }
+  if(current.isEmpty()&&pages.isEmpty())pages.add(List.of()); else if(!current.isEmpty())pages.add(List.copyOf(current));
+  int page=Math.clamp(requestedPage,0,pages.size()-1),y=content.y();ArrayList<InspectorEntry> entries=new ArrayList<>();
+  for(var property:pages.get(page)){List<String> label=wrap(property.label(),Math.max(1,content.width()),measurer),help=wrap(property.help(),Math.max(1,content.width()),measurer);int inputY=y+label.size()*line+2,feedbackY=inputY+Math.max(18,property.inputHeight())+3,helpY=feedbackY+line;InspectorField field=new InspectorField(new Rect(content.x(),y,content.width(),label.size()*line),new Rect(content.x(),inputY,content.width(),Math.max(18,property.inputHeight())),new Rect(content.x(),feedbackY,content.width(),line),new Rect(content.x(),helpY,content.width(),help.size()*line));entries.add(new InspectorEntry(property,field));y=helpY+help.size()*line+gap;}
+  return new InspectorPage(List.copyOf(entries),pages.size(),page);
  }
+ public List<String> wrap(String value,int maxWidth,ToIntFunction<String> measurer){
+  ArrayList<String> out=new ArrayList<>();StringBuilder line=new StringBuilder();for(int at=0;at<value.length();){int cp=value.codePointAt(at),next=at+Character.charCount(cp);String candidate=line+new String(Character.toChars(cp));if(line.length()>0&&measurer.applyAsInt(candidate)>maxWidth){out.add(line.toString());line.setLength(0);}line.appendCodePoint(cp);at=next;}if(!line.isEmpty())out.add(line.toString());return out.isEmpty()?List.of(""):List.copyOf(out);
+ }
+ /** Legacy compact seam retained for callers that only need a conservative count. */
+ public int inspectorPageSize(Rect inspector){return Math.max(1,inspectorHeader(inspector).content().height()/52);}
+ public InspectorField inspectorField(Rect inspector,int index){Rect content=inspectorHeader(inspector).content();int y=content.y()+Math.max(0,index)*52;return new InspectorField(new Rect(content.x(),y,content.width(),10),new Rect(content.x(),y+12,content.width(),18),new Rect(content.x(),y+30,content.width(),4),new Rect(content.x(),y+34,content.width(),10));}
  /** Compact title text; the title has its own deterministic region above the pager. */
  public String inspectorTitle(SkillVfxModel.PrimitiveType type,int first,int last,int total,Rect inspector){return inspector.width()<=260?"詳細: "+SkillVfxDisplay.primitive(type):SkillVfxDisplay.primitive(type)+" ("+type+")";}
  public String inspectorPageLabel(int first,int last,int total){return (first+1)+"〜"+last+" / "+total;}
@@ -83,6 +112,13 @@ public final class SkillEditorLayout {
   ArrayList<PreviewStatusLine> lines=new ArrayList<>();for(int i=0;i<text.size();i++)lines.add(new PreviewStatusLine(text.get(i),new Rect(x,y+i*12,w,10)));
   return new PreviewStatus(List.copyOf(lines));
  }
+ /** The central panel is controls, not a miniature viewport; it deliberately pages at small heights. */
+ public PreviewPage previewPage(Rect preview,boolean detail,String hook,String primitive,String anchor,boolean allowed,String error,ToIntFunction<String> measurer){
+  int x=preview.x()+6,w=Math.max(1,preview.width()-12),top=preview.y()+26;Rect toggle=new Rect(x,top,Math.min(76,w),20);int y=top+24;ArrayList<PreviewStatusLine> lines=new ArrayList<>();
+  if(!detail){Rect world=new Rect(x,y+24,Math.min(132,w),20);String guide=shorten("ここは操作パネルです。未反映の下書きはワールドで確認します。",w,measurer);lines.add(new PreviewStatusLine(guide,new Rect(x,y,w,10)));lines.add(new PreviewStatusLine(shorten("現在: "+hook+(primitive.isBlank()?"":" > "+primitive),w,measurer),new Rect(x,y+48,w,10)));lines.add(new PreviewStatusLine(shorten("表示: "+anchor,w,measurer),new Rect(x,y+60,w,10)));String state=error==null||error.isBlank()?(allowed?"状態: プレビュー可能":"状態: 権限なし"):(allowed?"状態: エラー: ":"状態: 権限なし / ")+error;lines.add(new PreviewStatusLine(shorten(state,w,measurer),new Rect(x,y+72,w,10)));return new PreviewPage(false,toggle,world,zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),List.copyOf(lines));}
+  Rect play=new Rect(x,y,Math.min(72,w),20),stop=new Rect(x+76,y,Math.min(48,Math.max(0,w-76)),20),restart=new Rect(x+128,y,Math.min(68,Math.max(0,w-128)),20);y+=24;Rect loop=new Rect(x,y,Math.min(72,w),20),speed=new Rect(x+76,y,Math.min(82,Math.max(0,w-76)),20);y+=24;Rect quality=new Rect(x,y,Math.min(76,w),20),anchorRect=new Rect(x+80,y,Math.min(100,Math.max(0,w-80)),20);return new PreviewPage(true,toggle,zero(x,y),play,stop,restart,loop,speed,quality,anchorRect,List.of());
+ }
+ private static Rect zero(int x,int y){return new Rect(x,y,0,0);}
  private static String shorten(String value,int maxWidth,ToIntFunction<String> measurer){
   if(measurer.applyAsInt(value)<=maxWidth)return value;
   StringBuilder out=new StringBuilder();for(int at=0;at<value.length();){int codePoint=value.codePointAt(at),next=at+Character.charCount(codePoint);String candidate=out.toString()+new String(Character.toChars(codePoint))+"…";if(measurer.applyAsInt(candidate)>maxWidth)break;out.appendCodePoint(codePoint);at=next;}
