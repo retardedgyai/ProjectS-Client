@@ -120,16 +120,27 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
         var header=layout.inspectorHeader(r);int x=header.content().x(),w=Math.max(72,header.content().width());
         var p=primitive(doc);
         if(p==null){var empty=SkillVfxEmptyStatePresentation.decide(doc,hook,emissionId);drawLater(empty.message(),x,header.content().y());if(empty.action()!=SkillVfxEmptyStatePresentation.Action.NONE)add(button(x,header.content().y()+18,Math.min(150,w),empty.actionLabel(),empty.action()==SkillVfxEmptyStatePresentation.Action.ADD_PRIMITIVE?this::addPrimitive:this::addEmission));return;}
-        var appearancePresentation=SkillEditorUiController.appearance(p,SkillEditorClientState.appearanceEditable());var fields=AbilityVisualPropertySchemas.descriptors(p.type()); var properties=SkillEditorUiController.inspectorProperties(p,appearancePresentation.editable());var page=layout.inspectorPage(r,properties,inspectorPage,font::width,font.lineHeight);inspectorPage=page.page();int first=0;for(int i=0;i<inspectorPage;i++)first+=layout.inspectorPage(r,properties,i,font::width,font.lineHeight).entries().size();int last=first+page.entries().size(),pages=page.pages();
+        var appearancePresentation=SkillEditorUiController.appearance(p,SkillEditorClientState.appearanceEditable());var fields=AbilityVisualPropertySchemas.descriptors(p.type()); var properties=SkillEditorUiController.inspectorProperties(p,appearancePresentation.editable(),SkillEditorClientState.supportsEditorV3());var page=layout.inspectorPage(r,properties,inspectorPage,font::width,font.lineHeight);inspectorPage=page.page();int first=0;for(int i=0;i<inspectorPage;i++)first+=layout.inspectorPage(r,properties,i,font::width,font.lineHeight).entries().size();int last=first+page.entries().size(),pages=page.pages();
         drawLater(layout.inspectorTitle(p.type(),first,last,properties.size(),r),header.title().x(),header.title().y());drawLater(layout.inspectorPageLabel(first,last,properties.size()),header.page().x(),header.page().y()+5);
         var previous=button(header.previous().x(),header.previous().y(),header.previous().width(),"前へ",()->{inspectorPage=Math.max(0,inspectorPage-1);rebuildWidgets();});previous.active=inspectorPage>0;add(previous);
         var nextPage=button(header.next().x(),header.next().y(),header.next().width(),"次へ",()->{inspectorPage=Math.min(pages-1,inspectorPage+1);rebuildWidgets();});nextPage.active=inspectorPage+1<pages;add(nextPage);
         for(var entry:page.entries()){
             String field=entry.property().id(), fieldLabel=entry.property().label();
+            var row=entry.field();int y=row.input().y();
+            if(field.equals("motionCategory")){drawLater(MotionAuthoringPresentation.categoryLabel(),row.label().x(),row.label().y());continue;}
+            drawWrapped(fieldLabel,row.label());
             if(field.equals("appearance")){var appearance=button(x,entry.field().input().y(),w,appearancePresentation.label(),this::openAppearancePicker);appearance.active=appearancePresentation.editable();add(appearance);drawWrapped(entry.property().help(),entry.field().help());continue;}
+            if (field.equals("motionUnsupported")) {
+                drawWrapped(MotionAuthoringPresentation.unsupportedMessage(), row.input());
+                drawWrapped(entry.property().help(), row.help());
+                continue;
+            }
+            if (field.startsWith("motion")) {
+                buildMotionField(doc, p, field, row.input(), row.help());
+                continue;
+            }
             var descriptor=fields.stream().filter(value->value.id().equals(field)).findFirst().orElseThrow();
             Object value=doc.selectedValue(field);
-            var row=entry.field();int y=row.input().y();drawWrapped(fieldLabel,row.label());
             if(field.equals("argb")){
                 var box=new ProjectSTextField(font,x,y,w,18,Component.empty(),Component.literal("#AARRGGBB"));
                 box.setValue(SkillEditorUiController.argb(p.argb()));
@@ -183,11 +194,29 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
             add(number(x,y,w,"",number,v->{writeDescriptor(descriptor,doc,v);localError="";}));drawWrapped(AbilityVisualPropertySchemas.description(field),row.help());
         }
     }
+    private void buildMotionField(AbilityVisualEditorDocument doc,SkillVfxModel.Primitive primitive,String field,SkillEditorLayout.Rect input,SkillEditorLayout.Rect help){
+        if(!SkillEditorClientState.supportsEditorV3())return;
+        int x=input.x(),y=input.y(),w=input.width();String tooltip=MotionAuthoringPresentation.properties(primitive,true).stream().filter(value->value.id().equals(field)).map(MotionAuthoringPresentation.Property::help).findFirst().orElse("");
+        switch(field){
+            case "motionMode"->{var choices=MotionAuthoringPresentation.modes(primitive.type(),primitive.motion());var control=button(x,y,w,MotionAuthoringPresentation.label(primitive.motion().mode()),()->cycleMotionMode(primitive));control.active=choices.stream().anyMatch(value->value.enabled()&&value.value()!=primitive.motion().mode());control.setTooltip(Tooltip.create(Component.literal(MotionAuthoringPresentation.modeTooltip(primitive.type(),primitive.motion()))));add(control);}
+            case "motionDirection"->{var control=button(x,y,w,MotionAuthoringPresentation.label(primitive.motion().direction()),()->cycleMotionDirection(primitive));control.active=MotionAuthoringPresentation.canToggleDirection(primitive.type(),primitive.motion());control.setTooltip(Tooltip.create(Component.literal(tooltip)));add(control);}
+            case "motionPhase"->{var number=new ProjectSNumberField(font,x,y,w,18,Component.empty(),primitive.motion().phase()*100,0,100,1,0,"%",value->setMotion(primitive.id(),current->MotionAuthoringPresentation.phase(current,primitive.type(),value/100d),false));number.active=primitive.motion().mode()!=io.github.gyai.projects.client.vfx.MotionMode.STATIC;number.setTooltip(Tooltip.create(Component.literal(tooltip)));add(number);}
+            case "motionEasing"->{var control=button(x,y,w,MotionAuthoringPresentation.label(primitive.motion().easing()),()->cycleMotionEasing(primitive));control.active=MotionAuthoringPresentation.easings(primitive.type(),primitive.motion()).stream().anyMatch(value->value.enabled()&&value.value()!=primitive.motion().easing());control.setTooltip(Tooltip.create(Component.literal(tooltip)));add(control);}
+            case "motionTrail"->{var number=new ProjectSNumberField(font,x,y,w,18,Component.empty(),primitive.motion().trailFraction()*100,0,100,1,0,"%",value->setMotion(primitive.id(),current->MotionAuthoringPresentation.trail(current,primitive.type(),value/100d),false));number.setTooltip(Tooltip.create(Component.literal(tooltip)));add(number);}
+            default->{ }
+        }
+        drawWrapped(MotionAuthoringPresentation.properties(primitive,true).stream().filter(value->value.id().equals(field)).map(MotionAuthoringPresentation.Property::help).findFirst().orElse(""),help);
+    }
+    private void cycleMotionMode(SkillVfxModel.Primitive primitive){var choices=MotionAuthoringPresentation.modes(primitive.type(),primitive.motion());for(int i=1;i<=choices.size();i++){var next=choices.get((primitive.motion().mode().ordinal()+i)%choices.size());if(next.enabled()){setMotion(primitive.id(),current->MotionAuthoringPresentation.mode(current,primitive.type(),next.value()),true);return;}}}
+    private void cycleMotionDirection(SkillVfxModel.Primitive primitive){setMotion(primitive.id(),current->MotionAuthoringPresentation.nextDirection(primitive.type(),current),true);}
+    private void cycleMotionEasing(SkillVfxModel.Primitive primitive){setMotion(primitive.id(),current->MotionAuthoringPresentation.nextEasing(primitive.type(),current),true);}
     private void drawWrapped(String text,SkillEditorLayout.Rect bounds){int y=bounds.y();for(var line:layout.wrap(text,bounds.width(),font::width)){drawLater(line,bounds.x(),y);y+=font.lineHeight;}}
     private void buildTimeline(AbilityVisualEditorDocument doc,SkillEditorLayout.Rect r){
         if(r.width()<=0||r.height()<=0||doc==null)return;var bars=preview.timeline().bars(doc.visual(),hook);int duration=Math.max(1,bars.stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));
         var view=SkillVfxTimelinePresentation.layout(bars,duration,preview.timeline().ticks(),timelineViewport(r));
         for(var bar:view.bars())drawLater(bar.id()+"  "+bar.start()+"〜"+bar.end()+" tick",r.x()+6,bar.bounds().y());
+        var selected=primitive(doc);var overlay=SkillVfxTimelinePresentation.motionOverlay(selected,preview.timeline().ticks(),duration,timelineViewport(r),r.y()+26,Math.max(4,Math.min(10,r.height()/3)));
+        if(overlay!=null)drawLater("動き: "+overlay.label(),r.x()+6,r.y()+Math.max(14,r.height()-18));
         drawLater("開始 0 tick　　　　　　　　　　　　終了 "+view.endTick()+" tick",r.x()+6,r.y()+17);
     }
     private ProjectSButton button(int x,int y,int w,String label,Runnable action){return new ProjectSButton(x,y,Math.max(1,w),20,Component.literal(label),ProjectSButton.Kind.SECONDARY,action);}
@@ -202,6 +231,7 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     private void setControlCoordinate(AbilityVisualEditorDocument doc,String id,int point,int axis,double value){setControlPoints(doc,id,current->{var controls=new ArrayList<>(current.controls());var old=controls.get(point);controls.set(point,new SkillVfxModel.Vec(axis==0?value:old.x(),axis==1?value:old.y(),axis==2?value:old.z()));return controls;},false);}
     private void setControlPoints(AbilityVisualEditorDocument document,String id,java.util.function.Function<SkillVfxModel.Primitive,List<SkillVfxModel.Vec>> update,boolean rebuild){if(SkillVfxMutation.writeControls(document,id,update))afterMutation(rebuild);}
     private void setPrimitive(String id,java.util.function.UnaryOperator<SkillVfxModel.Primitive> update,boolean rebuild){var d=document();if(SkillVfxMutation.replace(d,id,update)){localError="";afterMutation(rebuild);}}
+    private void setMotion(String id,java.util.function.UnaryOperator<io.github.gyai.projects.client.vfx.MotionSpec> update,boolean rebuild){if(!SkillEditorClientState.supportsEditorV3())return;var d=document();var current=SkillVfxMutation.current(d,id).orElse(null);if(current==null)return;var next=update.apply(current.motion());if(next==null||next.equals(current.motion()))return;d.execute(AbilityVisualCommands.setMotion(id,next));localError="";afterMutation(rebuild);}
     private String actionBindingLabel(AbilityVisualEditorDocument doc,SkillVfxModel.Emission emission){if(emission.actionIndex()<0)return "アクション: 未設定";var actions=doc.baseline().gameplay();return emission.actionIndex()<actions.size()?"アクション "+emission.actionIndex()+": "+actions.get(emission.actionIndex()).type():"アクション: 無効";} private void cycleEmissionAction(){var d=document();var selected=emission(d);if(d==null||selected==null)return;int limit=d.baseline().gameplay().size(),next=selected.actionIndex()+1; if(next>=limit)next=-1;d.execute(AbilityVisualCommands.setEmissionActionIndex(hook,selected.id(),next));afterMutation(true);}
     private void addEmission(){if(document()==null)return;picker=Picker.PRIMITIVE;pickerCreatesEmission=true;pickerPage=0;rebuildWidgets();}
     private void addPrimitive(){if(document()==null||emissionId==null)return;picker=Picker.PRIMITIVE;pickerCreatesEmission=false;pickerPage=0;rebuildWidgets();}
@@ -237,6 +267,14 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
         if(doc==null||r.width()<=0||r.height()<=0)return;var bars=preview.timeline().bars(doc.visual(),hook);int duration=Math.max(1,bars.stream().mapToInt(SkillVfxTimeline.Bar::end).max().orElse(20));
         var view=SkillVfxTimelinePresentation.layout(bars,duration,preview.timeline().ticks(),timelineViewport(r));
         for(var bar:view.bars())graphics.fill(bar.bounds().x(),bar.bounds().y(),bar.bounds().x()+bar.bounds().width(),bar.bounds().y()+bar.bounds().height(),t.accentPrimary());
+        var overlay=SkillVfxTimelinePresentation.motionOverlay(primitive(doc),preview.timeline().ticks(),duration,timelineViewport(r),r.y()+26,Math.max(4,Math.min(10,r.height()/3)));
+        if(overlay!=null){
+            graphics.fill(overlay.track().x(),overlay.track().y(),overlay.track().x()+overlay.track().width(),overlay.track().y()+overlay.track().height(),t.textMuted());
+            graphics.fill(overlay.visible().x(),overlay.visible().y(),overlay.visible().x()+overlay.visible().width(),overlay.visible().y()+overlay.visible().height(),t.accentPrimary());
+            if(overlay.travel()&&overlay.trail().height()>0)graphics.fill(overlay.trail().x(),overlay.trail().y(),overlay.trail().x()+overlay.trail().width(),overlay.trail().y()+overlay.trail().height(),t.textSecondary());
+            graphics.fill(overlay.phaseMarker().x(),overlay.phaseMarker().y(),overlay.phaseMarker().x()+overlay.phaseMarker().width(),overlay.phaseMarker().y()+overlay.phaseMarker().height(),t.danger());
+            int from=overlay.direction().fromX(),to=overlay.direction().toX();graphics.fill(Math.min(from,to),overlay.direction().y(),Math.max(from,to)+1,overlay.direction().y()+2,t.textPrimary());
+        }
         graphics.fill(view.playheadX(),r.y()+27,view.playheadX()+2,r.y()+Math.max(28,r.height()-5),t.danger());
     }
     private SkillVfxTimelinePresentation.Rect timelineViewport(SkillEditorLayout.Rect r){return new SkillVfxTimelinePresentation.Rect(r.x()+6,r.y()+30,Math.max(1,r.width()-12),Math.max(1,r.height()-48));}
@@ -268,6 +306,8 @@ public final class SkillEditorScreen extends ProjectSThemedScreen {
     public SkillVfxModel.Hook authoringHook(){return hook;}
     public AbilityVfx.Frame begin3dAuthoring(){if(minecraft.player==null)return null;var look=minecraft.player.getLookAngle();var origin=preview.origin(new SkillVfxPreviewController.Vec(minecraft.player.getX(),minecraft.player.getY(),minecraft.player.getZ()),new SkillVfxPreviewController.Vec(look.x,look.y,look.z));authoringFrame=new AbilityVfx.Frame(new AbilityVfx.Vec(origin.x(),origin.y(),origin.z()),new AbilityVfx.Vec(look.x,look.y,look.z),new AbilityVfx.Vec(0,1,0));boolean hadCue=AbilityVfxLocalPreview.preview().isPresent();var result=SkillVfxMinecraftPreviewController.replace(document(),preview,authoringFrame);if(result.valid()){rememberPreview(result);if(!hadCue){AbilityVfxLocalPreview.quality(toCoreQuality());preview.restart();AbilityVfxLocalPreview.restart();}else syncPreviewClock();}return authoringFrame;}
     public SkillVfxModel.GameplayAction authoringAction(){var e=emission(document());var d=document();return e!=null&&d!=null&&e.actionIndex()>=0&&e.actionIndex()<d.baseline().gameplay().size()?d.baseline().gameplay().get(e.actionIndex()):null;}
+    public double authoringProgress(){var p=authoringPrimitive();return p==null?0:Math.clamp((preview.timeline().ticks()-p.delayTicks())/(double)Math.max(1,p.durationTicks()),0,1);}
+    public void toggleMotionDirection(){var p=authoringPrimitive();if(p==null||!SkillEditorClientState.supportsEditorV3()||!MotionAuthoringPresentation.canToggleDirection(p.type(),p.motion()))return;setMotion(p.id(),current->MotionAuthoringPresentation.toggleDirection(current,p.type()),true);}
     public void authoringPreviewChanged(AbilityVfx.Frame frame){if(frame!=null){authoringFrame=frame;var result=SkillVfxMinecraftPreviewController.replace(document(),preview,frame);if(result.valid()){rememberPreview(result);syncPreviewClock();}}}
     public void authoringReturned(){syncLocalPreview();rebuildWidgets();}
     public String worldPreviewHookLabel(){return SkillVfxDisplay.hook(hook);}

@@ -17,6 +17,7 @@ public final class AbilityVisualEditorDocument implements EditorDocument {
     public void setSelectedValue(String field,Object value){SkillVfxModel.Primitive p=selectedPrimitive();if(p==null||field==null||value==null)return;if(field.equals("controlPoints")){if(value instanceof List<?> list&&list.stream().allMatch(SkillVfxModel.Vec.class::isInstance)&&withControls(p,list.stream().map(SkillVfxModel.Vec.class::cast).toList())!=null)execute(AbilityVisualCommands.setControlPoints(p.id(),list.stream().map(SkillVfxModel.Vec.class::cast).toList()));return;}SkillVfxModel.Primitive next=withSelectedValue(p,field,value);if(next!=null)execute(AbilityVisualCommands.replacePrimitive(p.id(),next));}
     public void setPrimitiveValue(String id,String field,SkillVfxModel.Scalar value){visual=mapPrimitive(visual,id,p->p.withValue(field,value));}
     public void setAppearance(String id,SkillVfxModel.Appearance appearance){visual=mapPrimitive(visual,id,p->p.withAppearance(appearance));}
+    public void setMotion(String id,io.github.gyai.projects.client.vfx.MotionSpec motion){visual=mapPrimitive(visual,id,p->p.withMotion(motion));}
     public void setControlPoints(String id,List<SkillVfxModel.Vec> controls){visual=mapPrimitive(visual,id,p->{SkillVfxModel.Primitive next=withControls(p,controls);return next==null?p:next;});}
     /** Replaces one primitive through a command.  Widgets never retain their own draft copy. */
     public void replacePrimitive(String id, SkillVfxModel.Primitive replacement){

@@ -14,7 +14,14 @@ public final class SkillVfxDirectAuthoring {
         public Vec add(Vec v){return new Vec(x+v.x,y+v.y,z+v.z);} public Vec scale(double n){return new Vec(x*n,y*n,z*n);}
     }
     public record ScreenPoint(double x,double y,double depth) { public ScreenPoint { if(!Double.isFinite(x)||!Double.isFinite(y)||!Double.isFinite(depth))throw new IllegalArgumentException("finite screen point"); } }
-    public record Handle(String id,String label,Vec position,Kind kind) { public enum Kind { AXIS_X, AXIS_Y, AXIS_Z, POINT, RADIUS, HEIGHT, TURNS } }
+    public record Handle(String id,String label,Vec position,Kind kind) { public enum Kind { AXIS_X, AXIS_Y, AXIS_Z, POINT, RADIUS, HEIGHT, TURNS, DIRECTION, PHASE, TRAIL } }
+    /** The one world-space motion target that is selectable at a time. */
+    public enum MotionHandleTarget {
+        NONE(""), PHASE("直接操作: 開始位置"), TRAIL("直接操作: 軌跡");
+        private final String label;
+        MotionHandleTarget(String label) { this.label = label; }
+        public String label() { return label; }
+    }
     public record Projection(Vec right,Vec up,Vec forward,Vec origin,double focal,double guiScale) {
         public Projection { Objects.requireNonNull(right);Objects.requireNonNull(up);Objects.requireNonNull(forward);Objects.requireNonNull(origin);if(focal<=0||guiScale<=0||!Double.isFinite(focal)||!Double.isFinite(guiScale))throw new IllegalArgumentException("projection"); }
         public Optional<ScreenPoint> project(Vec world){Vec d=new Vec(world.x-origin.x,world.y-origin.y,world.z-origin.z);double z=dot(d,forward);if(z<=1e-6)return Optional.empty();return Optional.of(new ScreenPoint(dot(d,right)*focal/z/guiScale,dot(d,up)*focal/z/guiScale,z));}
@@ -29,7 +36,20 @@ public final class SkillVfxDirectAuthoring {
     public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action) { try { if(primitive==null||frame==null)return List.of(); return AbilityVfx.sample(SkillVfxPreviewBuilder.convert(primitive,action),frame,1,AbilityVfx.Quality.HIGH); } catch(RuntimeException ignored) { return List.of(); } }
     /** Playback-progress guide: use the exact production Motion planner/sampler path. */
     public static List<AbilityVfx.Command> guide(SkillVfxModel.Primitive primitive, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action,double progress) { try { if(primitive==null||frame==null)return List.of(); AbilityVfx.Primitive converted=SkillVfxPreviewBuilder.convert(primitive,action); double t=Math.clamp(progress,0,1); return AbilityVfx.sample(converted,frame,AbilityVfxMotionPlanner.plan(converted.motion(),t),AbilityVfx.Quality.HIGH); } catch(RuntimeException ignored) { return List.of(); } }
-    public static List<Handle> worldHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame){if(frame==null||p==null)return List.of();ArrayList<Handle> out=new ArrayList<>();for(var h:handles(p)){var local=new Vec(h.position().x()-p.offset().x(),h.position().y()-p.offset().y(),h.position().z()-p.offset().z());var oriented=h.kind().name().startsWith("AXIS_")?local:rotate(local,p.yaw());var q=new Vec(p.offset().x()+oriented.x(),p.offset().y()+oriented.y(),p.offset().z()+oriented.z());var world=frame.world(new AbilityVfx.Vec(q.x(),q.y(),q.z()));if(world!=null)out.add(new Handle(h.id(),h.label(),new Vec(world.x(),world.y(),world.z()),h.kind()));}return List.copyOf(out);}
+    public static List<Handle> worldHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame){return worldHandles(p,frame,null,0);}
+    public static List<Handle> worldHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action, double progress){
+        if(frame==null||p==null)return List.of();ArrayList<Handle> out=new ArrayList<>(worldShapeHandles(p,frame));
+        if(p.motion().mode()!=io.github.gyai.projects.client.vfx.MotionMode.STATIC&&MotionAuthoringPresentation.supportsRangeHandles(p.type(),p.motion())){var guide=MotionAuthoringPresentation.guide(p,frame,action,progress,AbilityVfx.Quality.HIGH);if(guide.phasePosition()!=null)out.add(new Handle("motion:phase","開始位置",new Vec(guide.phasePosition().x(),guide.phasePosition().y(),guide.phasePosition().z()),Handle.Kind.PHASE));if(guide.trailPosition()!=null)out.add(new Handle("motion:trail","軌跡の終端",new Vec(guide.trailPosition().x(),guide.trailPosition().y(),guide.trailPosition().z()),Handle.Kind.TRAIL));}
+        return List.copyOf(out);
+    }
+    /** Uses the same target filtering for screen hit-testing and world rendering. */
+    public static List<Handle> selectableMotionHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame, SkillVfxModel.GameplayAction action, double progress, MotionHandleTarget target){
+        return filterHandles(worldHandles(p,frame,action,progress),target);
+    }
+    public static List<Handle> filterHandles(Collection<Handle> handles, MotionHandleTarget target){
+        if(handles==null)return List.of();return handles.stream().filter(Objects::nonNull).filter(h->h.kind()!=Handle.Kind.DIRECTION).filter(h->h.kind()!=Handle.Kind.PHASE||target==MotionHandleTarget.PHASE).filter(h->h.kind()!=Handle.Kind.TRAIL||target==MotionHandleTarget.TRAIL).toList();
+    }
+    private static List<Handle> worldShapeHandles(SkillVfxModel.Primitive p, AbilityVfx.Frame frame){if(frame==null||p==null)return List.of();ArrayList<Handle> out=new ArrayList<>();for(var h:handles(p)){var local=new Vec(h.position().x()-p.offset().x(),h.position().y()-p.offset().y(),h.position().z()-p.offset().z());var oriented=h.kind().name().startsWith("AXIS_")?local:rotate(local,p.yaw());var q=new Vec(p.offset().x()+oriented.x(),p.offset().y()+oriented.y(),p.offset().z()+oriented.z());var world=frame.world(new AbilityVfx.Vec(q.x(),q.y(),q.z()));if(world!=null)out.add(new Handle(h.id(),h.label(),new Vec(world.x(),world.y(),world.z()),h.kind()));}return List.copyOf(out);}
     public static Projection fromBasis(Vec right,Vec up,Vec forward,Vec origin,double focal){Vec f=normalize(forward),r=normalize(right.add(f.scale(-dot(right,f)))),u=normalize(up.add(f.scale(-dot(up,f))).add(r.scale(-dot(up,r))));return new Projection(r,u,f,origin,focal,1);}
     public static Projection fromFov(Vec forward,Vec worldUp,Vec origin,double verticalFovRadians,int guiHeight,double guiScale){if(guiHeight<=0||verticalFovRadians<=0||verticalFovRadians>=Math.PI||guiScale<=0)throw new IllegalArgumentException("fov");Vec f=normalize(forward),reference=Math.abs(dot(normalize(worldUp),f))>.999?new Vec(0,0,1):worldUp,r=normalize(cross(reference,f)),u=normalize(cross(f,r));return new Projection(r,u,f,origin,(guiHeight/2d)/Math.tan(verticalFovRadians/2),guiScale);}
     /** Transform axes plus only model-backed, literal shape controls. */
@@ -42,8 +62,9 @@ public final class SkillVfxDirectAuthoring {
         return List.copyOf(out);
     }
     public static Optional<Pick> pick(Collection<Handle> handles,Projection projection,double mouseX,double mouseY,double radius){
-        Pick best=null;for(Handle h:handles){var point=projection.project(h.position());if(point.isEmpty())continue;double dx=point.get().x-mouseX,dy=point.get().y-mouseY,d=Math.hypot(dx,dy);if(d>radius)continue;Pick candidate=new Pick(h,d);if(best==null||candidate.distance()<best.distance()||(candidate.distance()==best.distance()&&point.get().depth()<projection.project(best.handle().position()).orElseThrow().depth()))best=candidate;}return Optional.ofNullable(best);
+        Pick best=null;for(Handle h:handles){var point=projection.project(h.position());if(point.isEmpty())continue;double dx=point.get().x-mouseX,dy=point.get().y-mouseY,d=Math.hypot(dx,dy);if(d>radius)continue;Pick candidate=new Pick(h,d);if(best==null||candidate.distance()<best.distance()||(candidate.distance()==best.distance()&&(pickPriority(candidate.handle())<pickPriority(best.handle())||(pickPriority(candidate.handle())==pickPriority(best.handle())&&point.get().depth()<projection.project(best.handle().position()).orElseThrow().depth()))))best=candidate;}return Optional.ofNullable(best);
     }
+    private static int pickPriority(Handle handle){return handle.kind()==Handle.Kind.PHASE||handle.kind()==Handle.Kind.TRAIL?0:1;}
     /** Maps GUI mouse motion onto the handle's rendered model axes. */
     public static DragDelta dragDelta(SkillVfxModel.Primitive p,Handle handle,AbilityVfx.Frame frame,Projection projection,double mouseDx,double mouseDy,boolean zMode){
         if(p==null||handle==null||frame==null||projection==null)return new DragDelta(0,0);Vec localX=new Vec(1,0,0),localY=new Vec(0,1,0),localZ=new Vec(0,0,1);boolean shape=!handle.kind().name().startsWith("AXIS_");if(shape){localX=rotate(localX,p.yaw());localY=rotate(localY,p.yaw());localZ=rotate(localZ,p.yaw());}Vec wx=worldDirection(frame,localX),wy=worldDirection(frame,localY),wz=worldDirection(frame,localZ);if(handle.kind()==Handle.Kind.AXIS_X||handle.kind()==Handle.Kind.RADIUS)return new DragDelta(projectedAmount(handle.position(),wx,projection,mouseDx,mouseDy),0);if(handle.kind()==Handle.Kind.AXIS_Y||handle.kind()==Handle.Kind.HEIGHT)return new DragDelta(0,projectedAmount(handle.position(),wy,projection,mouseDx,mouseDy));if(handle.kind()==Handle.Kind.AXIS_Z||handle.kind()==Handle.Kind.TURNS)return new DragDelta(projectedAmount(handle.position(),wz,projection,mouseDx,mouseDy),0);if(handle.kind()!=Handle.Kind.POINT)return new DragDelta(0,0);if(zMode)return new DragDelta(projectedAmount(handle.position(),wz,projection,mouseDx,mouseDy),0);return solvePlane(handle.position(),wx,wy,projection,mouseDx,mouseDy);
@@ -54,6 +75,16 @@ public final class SkillVfxDirectAuthoring {
     public static Vec axisDrag(Vec start,Handle.Kind axis,double amount){return switch(axis){case AXIS_X->new Vec(start.x+amount,start.y,start.z);case AXIS_Y->new Vec(start.x,start.y+amount,start.z);case AXIS_Z->new Vec(start.x,start.y,start.z+amount);default->start;};}
     /** Materializes the protocol-supported LINE control representation atomically. */
     public static boolean materializeLine(AbilityVisualEditorDocument document,String id){var p=SkillVfxMutation.current(document,id).orElse(null);if(p==null||p.type()!=SkillVfxModel.PrimitiveType.LINE||!p.controls().isEmpty())return false;double length=p.value("length") instanceof SkillVfxModel.Literal v?v.value():1;document.execute(AbilityVisualCommands.setControlPoints(id,List.of(new SkillVfxModel.Vec(0,0,0),new SkillVfxModel.Vec(0,0,Math.clamp(length,0,128)))));return true;}
+    /** Motion handles use only projected endpoints from the production guide; no curve inverse is introduced. */
+    public static SkillVfxModel.Primitive editAtMouse(SkillVfxModel.Primitive primitive,Handle handle,AbilityVfx.Frame frame,SkillVfxModel.GameplayAction action,double progress,Projection projection,double mouseX,double mouseY){
+        if(primitive==null||handle==null||projection==null)return primitive;
+        if(handle.kind()!=Handle.Kind.PHASE&&handle.kind()!=Handle.Kind.TRAIL)return edit(primitive,handle,0,0,false);
+        if(!MotionAuthoringPresentation.supportsRangeHandles(primitive.type(),primitive.motion()))return primitive;
+        var guide=MotionAuthoringPresentation.guide(primitive,frame,action,progress,AbilityVfx.Quality.HIGH);if(!guide.supported()||guide.fullShape().isEmpty())return primitive;
+        double physical=MotionAuthoringPresentation.closestParameter(guide.fullShape(),projection,mouseX,mouseY);var motion=primitive.motion();
+        if(handle.kind()==Handle.Kind.PHASE){double phase=motion.direction()==io.github.gyai.projects.client.vfx.MotionDirection.REVERSE?1-physical:physical;return primitive.withMotion(MotionAuthoringPresentation.phase(motion,primitive.type(),phase));}
+        double head=guide.plan().physicalHead();double trail=motion.direction()==io.github.gyai.projects.client.vfx.MotionDirection.REVERSE?Math.max(0,physical-head):Math.max(0,head-physical);return primitive.withMotion(MotionAuthoringPresentation.trail(motion,primitive.type(),trail));
+    }
     /** Applies the bounded model-backed edit used by the live 3D viewport. */
     public static SkillVfxModel.Primitive edit(SkillVfxModel.Primitive p,Handle h,double x,double y,boolean zMode){
         if(h.kind()==Handle.Kind.AXIS_X||h.kind()==Handle.Kind.AXIS_Y||h.kind()==Handle.Kind.AXIS_Z){var o=p.offset();var n=switch(h.kind()){case AXIS_X->new SkillVfxModel.Vec(clamp(o.x()+x),o.y(),o.z());case AXIS_Y->new SkillVfxModel.Vec(o.x(),clamp(o.y()+y),o.z());case AXIS_Z->new SkillVfxModel.Vec(o.x(),o.y(),clamp(o.z()+x));default->o;};return copy(p,n,p.values(),p.controls());}
