@@ -17,10 +17,10 @@ public final class AbilityVisualPropertySchemas {
     public static Map<SkillVfxModel.PrimitiveType,List<String>> all() { return TYPE_FIELDS; }
     public static PropertySchema<AbilityVisualEditorDocument> schema(SkillVfxModel.PrimitiveType type) {
         List<PropertyDescriptor<AbilityVisualEditorDocument,?>> out=new ArrayList<>();
-        for(String id:fields(type)) out.add(new PropertyDescriptor<AbilityVisualEditorDocument,Object>(id,label(id),Object.class,d->d.selectedValue(id),(d,v)->d.setSelectedValue(id,v),v->v!=null,"A value is required",id.startsWith("offset")?"Transform":"Visual","Scalar"));
+        for(String id:fields(type)) out.add(new PropertyDescriptor<AbilityVisualEditorDocument,Object>(id,label(id),Object.class,d->d.selectedValue(id),(d,v)->d.setSelectedValue(id,v),v->v!=null,"値を入力してください。",id.startsWith("offset")?"Transform":"Visual","Scalar"));
         return new PropertySchema<>(out);
     }
     public static List<PropertyDescriptor<AbilityVisualEditorDocument,?>> descriptors(SkillVfxModel.PrimitiveType type){return schema(type).properties();}
-    public static String description(String id){return switch(id){case "delayTicks"->"Ticks before this primitive begins";case "durationTicks"->"How long this primitive remains visible";case "argb"->"ARGB hexadecimal color";case "opacity"->"Alpha channel of the ARGB color";case "controlPoints"->"Bezier or line control point coordinates";case "radius","length","width","height"->"Literal value or gameplay action binding";default->"Visual primitive property";};}
-    private static String label(String id) { return switch(id) {case "delayTicks"->"Delay";case "durationTicks"->"Duration";case "argb"->"Color (ARGB)";case "opacity"->"Opacity";case "controlPoints"->"Control points";default->id;}; }
+    public static String description(String id){return SkillVfxDisplay.field(id).description();}
+    private static String label(String id) { return SkillVfxDisplay.field(id).name(); }
 }
