@@ -61,7 +61,7 @@ public final class SkillVfxModel {
     }
     public static Primitive defaults(String id, PrimitiveType type) {
         Map<String,Scalar> values=new TreeMap<>();
-        switch(type) { case POINT -> values.put("size",new Literal(1)); case LINE -> values.put("length",new Literal(1)); case ARC -> {values.put("radius",new Literal(1));values.put("sweepAngle",new Literal(1));} case CIRCLE,SPHERE -> values.put("radius",new Literal(1)); case BURST -> {values.put("radius",new Literal(1));values.put("count",new Literal(8));} case CONE -> {values.put("length",new Literal(1));values.put("angle",new Literal(.5));} case SPIRAL -> {values.put("radius",new Literal(1));values.put("turns",new Literal(1));} case WAVE -> {values.put("radius",new Literal(1));values.put("length",new Literal(1));} case BEZIER -> { } }
+        switch(type) { case POINT -> values.put("size",new Literal(1)); case LINE -> values.put("length",new Literal(1)); case ARC -> {values.put("radius",new Literal(1));values.put("sweepAngle",new Literal(1));} case CIRCLE,SPHERE -> values.put("radius",new Literal(1)); case BURST -> {values.put("radius",new Literal(1));values.put("count",new Literal(8));} case CONE -> {values.put("length",new Literal(1));values.put("angle",new Literal(.5));} case SPIRAL -> {values.put("radius",new Literal(1));values.put("height",new Literal(1));values.put("turns",new Literal(1));} case WAVE -> {values.put("radius",new Literal(1));values.put("length",new Literal(1));} case BEZIER -> { } }
         List<Vec> controls=switch(type) {
             case LINE -> List.of(new Vec(0,0,0),new Vec(0,0,1));
             case BEZIER -> List.of(new Vec(0,0,0),new Vec(0,0,.5),new Vec(0,0,1));

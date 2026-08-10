@@ -6,8 +6,16 @@ public final class EditorCoreFoundationTest {
     private record Doc(String id, StringBuilder value) implements EditorDocument { }
     public static void main(String[] args) {
         historyTracksSavedBaselineAndBranchDivergence();
+        alreadyAppliedHistoryPreservesOneGestureSemantics();
         historyDoesNotMoveCursorWhenCallbacksFail();
         schemaIsOrderedAndWritesPerDocument();
+    }
+    private static void alreadyAppliedHistoryPreservesOneGestureSemantics() {
+        Doc doc=new Doc("drag",new StringBuilder("A")); EditorHistory<Doc> history=new EditorHistory<>(); history.markSaved();
+        doc.value.append("B"); history.recordAlreadyApplied(doc,command("drag","B")); assert history.size()==1&&history.dirtyState()==DirtyState.DIRTY&&doc.value.toString().equals("AB");
+        assert history.undo(doc)&&doc.value.toString().equals("A")&&history.dirtyState()==DirtyState.CLEAN;
+        assert history.redo(doc)&&doc.value.toString().equals("AB")&&history.dirtyState()==DirtyState.DIRTY;
+        assert history.undo(doc); doc.value.append("C"); history.recordAlreadyApplied(doc,command("branch","C")); assert !history.canRedo()&&history.dirtyState()==DirtyState.DIRTY&&doc.value.toString().equals("AC");
     }
     private static void historyDoesNotMoveCursorWhenCallbacksFail() {
         Doc undoDoc=new Doc("undo",new StringBuilder()); EditorHistory<Doc> undoHistory=new EditorHistory<>();

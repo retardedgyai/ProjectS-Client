@@ -19,6 +19,18 @@ public final class EditorHistory<D extends EditorDocument> {
         commands.add(command);
         cursor++;
     }
+    /**
+     * Appends a command whose effect has already been applied to {@code document}.
+     * This is deliberately narrow: interactive editors may update a working draft many
+     * times while dragging, then retain one reversible command when the gesture ends.
+     */
+    public void recordAlreadyApplied(D document, EditorCommand<D> command) {
+        Objects.requireNonNull(document); Objects.requireNonNull(command);
+        if (savedCursor > cursor) savedCursor = -1;
+        while (commands.size() > cursor) commands.removeLast();
+        commands.add(command);
+        cursor++;
+    }
     public boolean undo(D document) {
         Objects.requireNonNull(document);
         if (cursor == 0) return false;

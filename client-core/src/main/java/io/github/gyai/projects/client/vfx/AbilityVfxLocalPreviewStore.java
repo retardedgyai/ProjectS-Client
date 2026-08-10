@@ -14,6 +14,11 @@ public final class AbilityVfxLocalPreviewStore {
         this.cue=cue; playhead=0; playing=true; quality=AbilityVfx.Quality.MEDIUM;
         return true;
     }
+    /** Replaces live authoring geometry without rewinding the local editor clock. */
+    public boolean replaceCuePreservingPlayback(AbilityVfx.Cue next) {
+        if(next==null||next.primitives()==null||next.primitives().isEmpty())return false;
+        boolean had=cue!=null;cue=next;playhead=Math.clamp(playhead,0,next.duration());if(!had){playhead=0;playing=true;}return true;
+    }
     /** Network ticks are not the local preview clock; DevTools owns this virtual playhead. */
     public void tick(long ignored) { }
     public Optional<Preview> preview() { return cue==null ? Optional.empty() : Optional.of(new Preview(cue,playhead,playing,quality)); }

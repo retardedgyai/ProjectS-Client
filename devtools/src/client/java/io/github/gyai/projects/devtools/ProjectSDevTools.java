@@ -19,11 +19,13 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfxWorldPreviewController;
+import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfx3dAuthoringWorldRenderer;
 
 /** Optional developer entrypoint. It adds tools, never grants server permission. */
 public final class ProjectSDevTools implements ClientModInitializer {
     @Override public void onInitializeClient() {
         SkillVfxWorldPreviewController.register();
+        SkillVfx3dAuthoringWorldRenderer.register();
         BetaClientRuntime.enableCapability(BetaProtocol.Capability.MOB_EDITOR_V2);
         PayloadTypeRegistry.serverboundPlay().register(BalanceRequestPayload.TYPE, BalanceRequestPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(BalanceUpdatePayload.TYPE, BalanceUpdatePayload.CODEC);
