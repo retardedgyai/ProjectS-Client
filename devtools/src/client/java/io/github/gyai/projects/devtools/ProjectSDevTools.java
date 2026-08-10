@@ -31,10 +31,13 @@ public final class ProjectSDevTools implements ClientModInitializer {
         PayloadTypeRegistry.clientboundPlay().register(MobEditorStatePayload.TYPE, MobEditorStatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MobEditorV2RequestPayload.TYPE, MobEditorV2RequestPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(MobEditorV2StatePayload.TYPE, MobEditorV2StatePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SkillEditorRequestPayload.TYPE, SkillEditorRequestPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SkillEditorStatePayload.TYPE, SkillEditorStatePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(BalanceStatePayload.TYPE, (payload, context) -> BalanceClientState.receive(payload.state()));
         ClientPlayNetworking.registerGlobalReceiver(MobEditorStatePayload.TYPE, (payload, context) -> context.client().execute(() -> MobEditorClientState.receive(payload.state())));
         ClientPlayNetworking.registerGlobalReceiver(MobEditorV2StatePayload.TYPE, (payload, context) -> context.client().execute(() -> MobEditorClientState.receiveV2(payload.state())));
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { BalanceClientState.reset(); MobEditorClientState.reset(); });
+        ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayload.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receive(payload.state())));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { BalanceClientState.reset(); MobEditorClientState.reset(); SkillEditorClientState.reset(); });
         ProjectSMenuExtensions.register(new ProjectSMenuExtension("projects.devtools", "Developer Tools", "開発者向け機能（サーバー権限が必要です）", () -> true, ProjectSDevToolsMenuScreen::open));
     }
 }

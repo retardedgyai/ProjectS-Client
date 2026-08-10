@@ -125,6 +125,7 @@ public final class ProjectSClient implements ClientModInitializer {
                     MonsterUiClientState.clear();
                     TelegraphClientState.clear();
                     AbilityVfxClientState.resetConnection();
+                    AbilityVfxLocalPreview.disconnect();
                     BetaClientRuntime.disconnect();
                     WORLD_LIFECYCLE.reset();
                 });
@@ -134,6 +135,7 @@ public final class ProjectSClient implements ClientModInitializer {
                             BetaClientRuntime.beginConnection();
                             WORLD_LIFECYCLE.reset();
                             AbilityVfxClientState.resetConnection();
+                            AbilityVfxLocalPreview.connectionReset();
                             if (ClientPlayNetworking.canSend(
                                     TelegraphHelloPayload.TYPE)) {
                                 ClientPlayNetworking.send(
@@ -159,10 +161,12 @@ public final class ProjectSClient implements ClientModInitializer {
             Object worldIdentity = client.level == null ? null : client.level.dimension();
             if (WORLD_LIFECYCLE.observe(worldIdentity)) {
                 BetaClientRuntime.clearElementTarget();
+                AbilityVfxLocalPreview.worldChanged();
             }
             MonsterUiClientState.tick(client);
             TelegraphClientState.tick(client);
             AbilityVfxClientState.tick(client);
+            AbilityVfxLocalPreview.tick(AbilityVfxClientState.ticks());
             // チャット・インベントリ・各種画面を開いている間は誤発動させない。
             if (client.player == null || client.getConnection() == null || client.screen != null) {
                 releaseAttack();
