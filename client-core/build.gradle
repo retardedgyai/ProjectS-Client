@@ -1,0 +1,52 @@
+import org.gradle.api.attributes.Usage
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.Bundling
+import org.gradle.api.attributes.LibraryElements
+
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+base { archivesName = 'projects-client' }
+// Loom 1.17 no longer publishes this historical project variant automatically.
+// Keep the explicit named mapping used by optional Fabric companions.
+configurations {
+    namedElements {
+        canBeConsumed = true
+        canBeResolved = false
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+artifacts { namedElements tasks.named('jar') }
+loom { splitEnvironmentSourceSets(); mods { 'projects_client' { sourceSet sourceSets.main; sourceSet sourceSets.client } } }
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand 'version': project.version } }
+tasks.withType(JavaCompile).configureEach { options.release = 25; options.encoding = 'UTF-8' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; withSourcesJar(); sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
+def mainChecks = [
+ telegraphClientTest: 'io.github.gyai.projects.client.TelegraphClientLogicTest', abilityVfxClientTest: 'io.github.gyai.projects.client.vfx.AbilityVfxClientTest', betaClientFoundationTest: 'io.github.gyai.projects.client.beta.BetaClientFoundationTest', betaProtocolCompatibilityTest: 'io.github.gyai.projects.client.beta.BetaProtocolCompatibilityTest', betaClientRuntimeLifecycleTest: 'io.github.gyai.projects.client.beta.BetaClientRuntimeLifecycleTest', fireStatusClientStoreTest: 'io.github.gyai.projects.client.beta.FireStatusClientStoreTest', fireStatusRenderRouteTest: 'io.github.gyai.projects.client.beta.FireStatusRenderRouteTest', iceStatusClientStoreTest: 'io.github.gyai.projects.client.beta.IceStatusClientStoreTest', elementStatusRenderRouteTest: 'io.github.gyai.projects.client.beta.ElementStatusRenderRouteTest', clientWorldLifecycleGuardTest: 'io.github.gyai.projects.client.beta.ClientWorldLifecycleGuardTest', clientCoreBoundaryTest: 'io.github.gyai.projects.client.ClientCoreBoundaryTest'
+]
+mainChecks.each { taskName, className -> tasks.register(taskName, JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = className; workingDir rootProject.projectDir; jvmArgs '-ea' } }
+tasks.named('check') { dependsOn mainChecks.keySet() }
+tasks.register('verifyClientCoreArtifact') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def jarFile = tasks.named('jar').get().archiveFile.get().asFile
+        def entries = new java.util.zip.ZipFile(jarFile).entries().collect { it.name }
+        def forbidden = entries.findAll { name -> name.contains('MobEditor') || name.contains('Balance') || name.contains('ProjectSUiKit') || name.contains('ProjectSDevTools') || name.contains('ProjectSEditor') || name.contains('io/github/gyai/projects/editor/core/') || name.contains('assets/projects_devtools/') }
+        if (!forbidden.empty) throw new GradleException("Client Core artifact leaks DevTools content: ${forbidden}")
+        def source = file('src/client/java/io/github/gyai/projects/client/ProjectSClient.java').text
+        ['MobEditorRequestPayload.TYPE','MobEditorStatePayload.TYPE','MobEditorV2RequestPayload.TYPE','MobEditorV2StatePayload.TYPE'].each { token -> if (source.contains(token)) throw new GradleException("Client Core registers frozen Mob channel token: ${token}") }
+    }
+}
+tasks.named('check') { dependsOn 'verifyClientCoreArtifact' }
+tasks.named('test') { failOnNoDiscoveredTests = false }
