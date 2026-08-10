@@ -7,6 +7,7 @@ public final class SkillEditorUiController {
     public enum ScalarMode { LITERAL, FROM_GAMEPLAY }
     public record Header(boolean undo, boolean redo, boolean refresh, boolean apply, boolean revert,
                          boolean dirty, String dirtyLabel) { }
+    public record AppearancePresentation(String label, String guidance, boolean editable) { }
     public record ParseResult<T>(T value, String error) { public boolean valid(){ return error.isEmpty(); } }
     private SkillEditorUiController() { }
 
@@ -22,6 +23,17 @@ public final class SkillEditorUiController {
 
     public static List<String> inspectorFields(SkillVfxModel.Primitive primitive) {
         return primitive==null ? List.of() : AbilityVisualPropertySchemas.descriptors(primitive.type()).stream().map(io.github.gyai.projects.editor.core.PropertyDescriptor::id).toList();
+    }
+    /** V1 keeps the authored appearance intact but presents it as read-only. */
+    public static AppearancePresentation appearance(SkillVfxModel.Primitive primitive, boolean editable) {
+        String label=primitive.appearance().kind()==io.github.gyai.projects.client.vfx.AbilityVfx.AppearanceKind.DEBUG_QUAD?"描画方式: デバッグ表示":"パーティクル: "+primitive.appearance().id();
+        return new AppearancePresentation(label,editable?"描画方式とパーティクルを選択します。":"このサーバーではパーティクル編集に対応していません。",editable);
+    }
+    public static List<SkillEditorLayout.InspectorProperty> inspectorProperties(SkillVfxModel.Primitive primitive, boolean editable) {
+        ArrayList<SkillEditorLayout.InspectorProperty> out=new ArrayList<>(); var appearance=appearance(primitive,editable);
+        out.add(new SkillEditorLayout.InspectorProperty("appearance","見た目",appearance.guidance(),18));
+        for(var descriptor:AbilityVisualPropertySchemas.descriptors(primitive.type())) { int input=descriptor.id().equals("controlPoints")?20+Math.min(2,primitive.controls().size())*30:18; out.add(new SkillEditorLayout.InspectorProperty(descriptor.id(),descriptor.displayName(),AbilityVisualPropertySchemas.description(descriptor.id()),input)); }
+        return List.copyOf(out);
     }
     public static ScalarMode mode(SkillVfxModel.Scalar scalar) {
         return scalar instanceof SkillVfxModel.FromGameplay ? ScalarMode.FROM_GAMEPLAY : ScalarMode.LITERAL;

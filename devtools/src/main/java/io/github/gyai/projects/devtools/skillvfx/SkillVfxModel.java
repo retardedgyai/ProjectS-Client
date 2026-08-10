@@ -37,7 +37,8 @@ public final class SkillVfxModel {
         public Primitive withAppearance(Appearance value) { return new Primitive(id,type,delayTicks,durationTicks,argb,width,density,seed,offset,yaw,values,controls,value); }
     }
     public record Emission(String id, int actionIndex, List<Primitive> primitives) {
-        public Emission { requireId(id); if(actionIndex < -1) throw new IllegalArgumentException("action index"); primitives=List.copyOf(primitives==null?List.of():primitives); unique(primitives.stream().map(Primitive::id).toList()); }
+        /** An emission is an authored unit, not an intermediate empty container. */
+        public Emission { requireId(id); if(actionIndex < -1) throw new IllegalArgumentException("action index"); primitives=List.copyOf(primitives==null?List.of():primitives); if(primitives.isEmpty()) throw new IllegalArgumentException("empty emission"); unique(primitives.stream().map(Primitive::id).toList()); }
     }
     public record HookBinding(Hook hook, List<Emission> emissions) { public HookBinding { Objects.requireNonNull(hook); emissions=List.copyOf(emissions==null?List.of():emissions); unique(emissions.stream().map(Emission::id).toList()); } }
     public record Visual(String id, List<HookBinding> hooks) {
