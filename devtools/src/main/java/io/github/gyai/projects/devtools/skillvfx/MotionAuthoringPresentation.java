@@ -152,7 +152,7 @@ public final class MotionAuthoringPresentation {
         boolean enabled = visible && primitive.motion().mode() == MotionMode.TRAVEL;
         SkillVfxDirectAuthoring.MotionHandleTarget selected = target == SkillVfxDirectAuthoring.MotionHandleTarget.TRAIL && enabled
                 ? SkillVfxDirectAuthoring.MotionHandleTarget.TRAIL : SkillVfxDirectAuthoring.MotionHandleTarget.PHASE;
-        return new MotionHandleControl(8, 104, Math.min(152, panelWidth), 20, selected.label(), visible, enabled);
+        return new MotionHandleControl(8, 164, Math.min(152, panelWidth), 20, selected.label(), visible, enabled);
     }
 
     public static MotionSpec mode(MotionSpec current, SkillVfxModel.PrimitiveType type, MotionMode value) {

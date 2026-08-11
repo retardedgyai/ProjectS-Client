@@ -7,6 +7,7 @@ import io.github.gyai.projects.client.vfx.AbilityVfx;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxDirectAuthoring;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxModel;
 import io.github.gyai.projects.devtools.skillvfx.MotionAuthoringPresentation;
+import io.github.gyai.projects.devtools.skillvfx.SkillVfxVisualUxPresentation;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -64,13 +65,7 @@ public final class SkillVfx3dAuthoringWorldRenderer {
             for (SkillVfxDirectAuthoring.Handle handle : handles) {
                 AbilityVfx.Vec at = new AbilityVfx.Vec(
                         handle.position().x(), handle.position().y(), handle.position().z());
-                int r = 255;
-                int g = handle.kind().name().startsWith("AXIS") ? 220 : 180;
-                int b = handle.kind().name().startsWith("AXIS") ? 80 : 255;
-                commands.add(line(at.add(new AbilityVfx.Vec(-.08, 0, 0)),
-                        at.add(new AbilityVfx.Vec(.08, 0, 0)), r, g, b));
-                commands.add(line(at.add(new AbilityVfx.Vec(0, -.08, 0)),
-                        at.add(new AbilityVfx.Vec(0, .08, 0)), r, g, b));
+                addHandleMarker(commands, at, SkillVfxVisualUxPresentation.handleVisual(handle.kind()));
             }
             if (primitive.type() == SkillVfxModel.PrimitiveType.BEZIER) {
                 List<SkillVfxDirectAuthoring.Handle> controls = handles.stream()
@@ -100,6 +95,29 @@ public final class SkillVfx3dAuthoringWorldRenderer {
 
     private static AbilityVfx.Command line(AbilityVfx.Vec a, AbilityVfx.Vec b, int r, int g, int blue) {
         return new AbilityVfx.Command(a, b, new AbilityVfx.Color(r, g, blue, 220), .035);
+    }
+
+    private static void addHandleMarker(List<AbilityVfx.Command> commands, AbilityVfx.Vec at,
+                                         SkillVfxVisualUxPresentation.DirectHandleVisual visual) {
+        int argb = visual.color();
+        int r = (argb >>> 16) & 255, g = (argb >>> 8) & 255, b = argb & 255;
+        switch (visual.marker()) {
+            case DIAMOND -> {
+                commands.add(line(at.add(new AbilityVfx.Vec(-.1, 0, 0)), at.add(new AbilityVfx.Vec(0, .1, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(0, .1, 0)), at.add(new AbilityVfx.Vec(.1, 0, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(.1, 0, 0)), at.add(new AbilityVfx.Vec(0, -.1, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(0, -.1, 0)), at.add(new AbilityVfx.Vec(-.1, 0, 0)), r, g, b));
+            }
+            case BAR -> {
+                commands.add(line(at.add(new AbilityVfx.Vec(-.12, 0, 0)), at.add(new AbilityVfx.Vec(.12, 0, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(-.12, -.05, 0)), at.add(new AbilityVfx.Vec(-.12, .05, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(.12, -.05, 0)), at.add(new AbilityVfx.Vec(.12, .05, 0)), r, g, b));
+            }
+            case CROSS -> {
+                commands.add(line(at.add(new AbilityVfx.Vec(-.08, 0, 0)), at.add(new AbilityVfx.Vec(.08, 0, 0)), r, g, b));
+                commands.add(line(at.add(new AbilityVfx.Vec(0, -.08, 0)), at.add(new AbilityVfx.Vec(0, .08, 0)), r, g, b));
+            }
+        }
     }
 
     private static void add(List<AbilityVfx.Command> target, List<AbilityVfx.Command> source, AbilityVfx.Color color, double width) {
