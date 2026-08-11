@@ -7,4 +7,4 @@ pluginManagement {
 }
 
 rootProject.name = 'ProjectS-Client'
-include 'client-core', 'editor-core', 'devtools'
+include 'client-core', 'editor-core', 'devtools', 'ui-runtime', 'minecraft-adapter'

@@ -3,7 +3,6 @@ package io.github.gyai.projects.devtools;
 import io.github.gyai.projects.client.BalanceClientState;
 import io.github.gyai.projects.client.MobEditorClientState;
 import io.github.gyai.projects.client.ProjectSClient;
-import io.github.gyai.projects.client.ui.screen.ProjectSUiKitScreen;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -19,7 +18,7 @@ public final class ProjectSDevToolsMenuScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Server Dev Menu"), ignored -> { if (ProjectSClient.sendInput("OPEN_DEV_MENU")) minecraft.setScreen(null); }).bounds(x,y+28,220,20).build());
         addRenderableWidget(Button.builder(Component.literal("Balance"), ignored -> BalanceClientState.requestOpen(this)).bounds(x,y+54,220,20).build());
         addRenderableWidget(Button.builder(Component.literal("Mob Editor"), ignored -> MobEditorClientState.requestOpen(this)).bounds(x,y+80,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("UI Kit"), ignored -> minecraft.setScreen(new ProjectSUiKitScreen(this))).bounds(x,y+106,220,20).build());
+        addRenderableWidget(Button.builder(Component.literal("UI Kit / Stage 1"), ignored -> minecraft.setScreen(new ProjectSUiKitPilotScreen(() -> minecraft.setScreen(this)))).bounds(x,y+106,220,20).build());
         addRenderableWidget(Button.builder(Component.literal("Editor Frontend"), ignored -> minecraft.setScreen(new ProjectSEditorScreen(this))).bounds(x,y+132,220,20).build());
         addRenderableWidget(Button.builder(Component.literal("Skill Editor"), ignored -> SkillEditorClientState.open(this)).bounds(x,y+156,220,20).build());
     }

@@ -1,4 +1,6 @@
 plugins { id 'net.fabricmc.fabric-loom' version "${loom_version}" }
+
+evaluationDependsOn(':minecraft-adapter')
 base { archivesName = 'projects-devtools' }
 loom { splitEnvironmentSourceSets(); mods { 'projects_devtools' { sourceSet sourceSets.main; sourceSet sourceSets.client } } }
 dependencies {
@@ -7,9 +9,18 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     implementation project(path: ':client-core', configuration: 'namedElements')
     implementation project(':editor-core')
+    implementation project(':ui-runtime')
+    clientImplementation project(':minecraft-adapter')
     include project(':editor-core')
 }
-sourceSets { client { compileClasspath += project(':client-core').sourceSets.client.output; runtimeClasspath += project(':client-core').sourceSets.client.output } }
+sourceSets {
+    client {
+        compileClasspath += project(':client-core').sourceSets.client.output
+        runtimeClasspath += project(':client-core').sourceSets.client.output
+        compileClasspath += project(':minecraft-adapter').sourceSets.client.output
+        runtimeClasspath += project(':minecraft-adapter').sourceSets.client.output
+    }
+}
 processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand 'version': project.version } }
 tasks.withType(JavaCompile).configureEach { options.release = 25; options.encoding = 'UTF-8' }
 java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
@@ -26,7 +37,8 @@ tasks.register('skillVfxEditorUiTest', JavaExec) { dependsOn testClasses; classp
 tasks.register('vfxDirectAuthoringTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.VfxDirectAuthoringTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
 tasks.register('motionEditorTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.MotionEditorTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
 tasks.register('visualUxPresentationTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxVisualUxTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
-tasks.named('check') { dependsOn 'mobEditorV2UiModelTest', 'projectSUiLogicTest', 'devToolsBoundaryTest', 'skillVfxEditorModelTest', 'skillVfxEditorProtocolParityTest', 'skillVfxAppearanceProtocolTest', 'skillVfxEditorMotionProtocolTest', 'skillEditorAppearanceMutationTest', 'editorTimelineModelTest', 'skillVfxEditorUiTest', 'vfxDirectAuthoringTest', 'motionEditorTest', 'visualUxPresentationTest' }
+tasks.register('projectSUiKitLayoutTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.ui.ProjectSUiKitLayoutTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.named('check') { dependsOn 'mobEditorV2UiModelTest', 'projectSUiLogicTest', 'devToolsBoundaryTest', 'skillVfxEditorModelTest', 'skillVfxEditorProtocolParityTest', 'skillVfxAppearanceProtocolTest', 'skillVfxEditorMotionProtocolTest', 'skillEditorAppearanceMutationTest', 'editorTimelineModelTest', 'skillVfxEditorUiTest', 'vfxDirectAuthoringTest', 'motionEditorTest', 'visualUxPresentationTest', 'projectSUiKitLayoutTest' }
 tasks.register('verifyDevToolsArtifact') {
     dependsOn tasks.named('jar'), project(':client-core').tasks.named('jar')
     doLast {
@@ -37,6 +49,12 @@ tasks.register('verifyDevToolsArtifact') {
         zip.close()
         if (!(mod =~ /"id"\s*:\s*"projects_devtools"/) || !(mod =~ /"projects_client"\s*:\s*"0\.1\.0"/)) throw new GradleException('DevTools fabric.mod.json lacks exact projects_client dependency')
         if (entries.count { it == 'META-INF/jars/editor-core-0.1.0.jar' } != 1) throw new GradleException("editor-core must be nested exactly once: ${entries.findAll { it.contains('editor-core') }}")
+        def runtimeLeak = entries.findAll { entry ->
+            entry.startsWith('META-INF/jars/ui-runtime-') || entry.startsWith('META-INF/jars/minecraft-adapter-')
+                    || entry.startsWith('io/github/gyai/projects/ui/runtime/')
+                    || entry.startsWith('io/github/gyai/projects/minecraft/adapter/')
+        }
+        if (!runtimeLeak.empty) throw new GradleException("DevTools must not package ProjectS runtime classes: ${runtimeLeak}")
         def coreJar = project(':client-core').tasks.named('jar').get().archiveFile.get().asFile
         def coreZip = new java.util.zip.ZipFile(coreJar)
         def coreEntries = coreZip.entries().collect { it.name }.findAll { it.endsWith('.class') || it.startsWith('assets/projects_client/') } as Set
