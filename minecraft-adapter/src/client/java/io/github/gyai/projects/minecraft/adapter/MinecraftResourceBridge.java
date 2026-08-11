@@ -13,4 +13,16 @@ public final class MinecraftResourceBridge {
     public Identifier resolve(String namespace, String path) {
         return Identifier.fromNamespaceAndPath(namespace, path);
     }
+
+    /** Converts a bundled classpath-style asset path to a Minecraft resource identity. */
+    public Identifier resolveAsset(String assetPath) {
+        if (assetPath == null || assetPath.isBlank() || assetPath.contains("..")) {
+            throw new IllegalArgumentException("assetPath");
+        }
+        String prefix = "assets/projects_client/";
+        if (!assetPath.startsWith(prefix)) {
+            throw new IllegalArgumentException("ProjectS asset path must start with " + prefix);
+        }
+        return Identifier.fromNamespaceAndPath("projects_client", assetPath.substring(prefix.length()));
+    }
 }

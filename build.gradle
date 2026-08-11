@@ -7,10 +7,61 @@ allprojects {
 
 def lifecycleProjects = [':client-core', ':editor-core', ':devtools', ':ui-runtime', ':minecraft-adapter']
 
+// Stage 2 focused entry points. Each delegates to the owning module's non-GUI JavaExec check.
+tasks.register('typographyTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:typographyRuntimeTest', ':minecraft-adapter:typographyAdapterTest'
+}
+tasks.register('themeTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:themeRuntimeTest'
+}
+tasks.register('iconTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:iconRuntimeTest', ':minecraft-adapter:iconAdapterTest'
+}
+tasks.register('componentTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:componentKitTest', ':ui-runtime:uiInputHostTimelineTest', ':minecraft-adapter:componentAdapterTest'
+}
+tasks.register('hostIntegrationTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:uiInputHostTimelineTest', ':minecraft-adapter:hostAdapterTest'
+}
+tasks.register('uiKitLayoutTest') {
+    group = 'verification'
+    dependsOn ':devtools:projectSUiKitLayoutTest', ':devtools:projectSUiKitV02LayoutTest'
+}
+tasks.register('verifyUiRuntimePurity') {
+    group = 'verification'
+    dependsOn ':ui-runtime:verifyUiRuntimePurity'
+}
+tasks.register('verifyAdapterBoundary') {
+    group = 'verification'
+    dependsOn ':minecraft-adapter:verifyMinecraftAdapterBoundary', 'verifySourceSetBoundaries'
+}
+tasks.register('verifyArtifactSeparation') {
+    group = 'verification'
+    dependsOn ':client-core:verifyClientCoreArtifact', ':devtools:verifyDevToolsArtifact', 'verifyRuntimeResourceManifest'
+}
+tasks.register('verifyNestedArtifacts') {
+    group = 'verification'
+    dependsOn 'verifyRuntimeArtifactOwnership'
+}
+tasks.register('verifyProtocolGuards') {
+    group = 'verification'
+    dependsOn 'verifyProtocolFixtureParity'
+}
+tasks.register('verifySideEffectGuards') {
+    group = 'verification'
+    dependsOn 'verifyBuildSafety'
+}
+
 tasks.named('check') {
     dependsOn lifecycleProjects.collect { "${it}:check" }
     dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
-            'verifyRuntimeArtifactOwnership'
+            'verifyRuntimeArtifactOwnership', 'verifyRuntimeResourceManifest',
+            'typographyTest', 'themeTest', 'iconTest', 'componentTest', 'uiKitLayoutTest'
 }
 
 tasks.named('clean') { dependsOn lifecycleProjects.collect { "${it}:clean" } }
@@ -18,7 +69,7 @@ tasks.named('clean') { dependsOn lifecycleProjects.collect { "${it}:clean" } }
 tasks.named('build') {
     dependsOn lifecycleProjects.collect { "${it}:build" }
     dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
-            'verifyRuntimeArtifactOwnership'
+            'verifyRuntimeArtifactOwnership', 'verifyRuntimeResourceManifest'
 }
 
 // Deployment remains available, but only by explicitly asking for this task.
@@ -252,5 +303,108 @@ tasks.register('verifyRuntimeArtifactOwnership') {
         logger.lifecycle('NESTED_ARTIFACT_PASS: projects_client owns exactly one ui-runtime and minecraft-adapter nested JAR; '
                 + 'all runtime class/resource entries are unique (standard and synthetic Loom metadata excluded) and '
                 + 'projects_devtools owns zero runtime duplicates')
+    }
+}
+
+tasks.register('verifyRuntimeResourceManifest') {
+    group = 'verification'
+    description = 'Verifies one-time projects_client ownership of Stage 2 fonts, licenses, and runtime manifests.'
+    dependsOn ':client-core:jar', ':devtools:jar'
+    doLast {
+        def clientArtifact = project(':client-core').layout.buildDirectory
+                .file("libs/projects-client-${project.version}.jar").get().asFile
+        def devtoolsArtifact = project(':devtools').layout.buildDirectory
+                .file("libs/projects-devtools-${project.version}.jar").get().asFile
+        if (!clientArtifact.isFile() || !devtoolsArtifact.isFile()) {
+            throw new GradleException('Stage 2 artifacts are missing for resource ownership validation')
+        }
+        def entriesFor = { File artifact ->
+            def entries = new ArrayList<String>()
+            collectZipEntries(artifact.bytes, '', entries)
+            entries
+        }
+        def clientEntries = entriesFor(clientArtifact)
+        def devtoolsEntries = entriesFor(devtoolsArtifact)
+        def adapterNested = clientEntries.findAll {
+            it ==~ /META-INF\/jars\/minecraft-adapter-[^\/!]+\.jar/
+        }
+        if (adapterNested.size() != 1) {
+            throw new GradleException("Expected exactly one nested minecraft-adapter jar, found ${adapterNested}")
+        }
+        def adapterPath = adapterNested[0]
+        def runtimePrefixes = [
+                'assets/projects_client/fonts/',
+                'assets/projects_client/licenses/fonts/',
+                'assets/projects_client/licenses/icons/',
+                'assets/projects_client/licenses/runtime-resource-manifest.json',
+                'assets/projects_client/textures/ui/studio_icons_24.png'
+        ]
+        def isRuntimeResource = { String entry ->
+            def logical = entry.substring(entry.lastIndexOf('!') + 1)
+            runtimePrefixes.any { logical.startsWith(it) }
+        }
+        def logical = { String entry -> entry.substring(entry.lastIndexOf('!') + 1) }
+        def resources = clientEntries.findAll { isRuntimeResource(it) }
+        if (resources.isEmpty()) throw new GradleException('No Stage 2 runtime resources found in projects_client')
+        def duplicateResources = resources.groupBy(logical).findAll { _, values -> values.size() != 1 }
+        if (!duplicateResources.isEmpty()) {
+            throw new GradleException("projects_client duplicates Stage 2 resources: ${duplicateResources.keySet()}")
+        }
+        def outsideAdapter = resources.findAll { !it.startsWith(adapterPath + '!') }
+        if (!outsideAdapter.isEmpty()) {
+            throw new GradleException("Stage 2 resources escaped the adapter owner: ${outsideAdapter}")
+        }
+        def fontFiles = resources.findAll { logical(it).startsWith('assets/projects_client/fonts/')
+                && logical(it).toLowerCase(Locale.ROOT).endsWith('.ttf') }
+        if (fontFiles.size() != 9) {
+            throw new GradleException("Expected 9 bundled TTF faces (Inter 4 + JetBrains 4 + Noto CJK 1), found ${fontFiles.size()}")
+        }
+        def requiredResources = [
+                'assets/projects_client/licenses/fonts/typography-font-manifest.json',
+                'assets/projects_client/licenses/fonts/OFL-1.1-Inter-4.1.txt',
+                'assets/projects_client/licenses/fonts/OFL-1.1-JetBrainsMono-2.304.txt',
+                'assets/projects_client/licenses/fonts/OFL-1.1-NotoSansCJK-2.004.txt',
+                'assets/projects_client/licenses/icons/manifest.json',
+                'assets/projects_client/licenses/runtime-resource-manifest.json',
+                'assets/projects_client/textures/ui/studio_icons_24.png'
+        ]
+        requiredResources.each { path ->
+            def matches = resources.findAll { logical(it) == path }
+            if (matches.size() != 1) throw new GradleException("Required runtime resource count for ${path}: ${matches.size()}")
+        }
+        def atlasLogicalPath = 'assets/projects_client/textures/ui/studio_icons_24.png'
+        def adapterBytes = new java.util.zip.ZipFile(clientArtifact).withCloseable { outer ->
+            outer.getInputStream(outer.getEntry(adapterPath)).bytes
+        }
+        byte[] atlasBytes = null
+        byte[] runtimeManifestBytes = null
+        new java.util.zip.ZipInputStream(new ByteArrayInputStream(adapterBytes)).withCloseable { nested ->
+            java.util.zip.ZipEntry entry
+            while ((entry = nested.nextEntry) != null) {
+                if (entry.name == atlasLogicalPath) atlasBytes = nested.readAllBytes()
+                if (entry.name == 'assets/projects_client/licenses/runtime-resource-manifest.json') {
+                    runtimeManifestBytes = nested.readAllBytes()
+                }
+            }
+        }
+        if (atlasBytes == null) throw new GradleException("Atlas resource missing from adapter nested JAR: ${atlasLogicalPath}")
+        def atlasImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(atlasBytes))
+        if (atlasImage == null || atlasImage.width != 192 || atlasImage.height != 96) {
+            throw new GradleException("Atlas dimensions must be 192x96, found ${atlasImage?.width}x${atlasImage?.height}")
+        }
+        def atlasHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(atlasBytes).collect { String.format('%02X', it) }.join()
+        if (atlasHash != 'ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326') {
+            throw new GradleException("Atlas provenance hash mismatch: ${atlasHash}")
+        }
+        if (runtimeManifestBytes == null
+                || !new String(runtimeManifestBytes, java.nio.charset.StandardCharsets.UTF_8)
+                .contains('"atlasSha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326"')) {
+            throw new GradleException('Runtime resource manifest atlas SHA-256 mismatch')
+        }
+        def devtoolsLeak = devtoolsEntries.findAll { isRuntimeResource(it) }
+        if (!devtoolsLeak.isEmpty()) throw new GradleException("projects_devtools contains runtime resources: ${devtoolsLeak}")
+        logger.lifecycle("RUNTIME_RESOURCE_MANIFEST_PASS: fonts=${fontFiles.size()} resources=${resources.size()} "
+                + "owner=projects_client nestedAdapter=1 devtoolsRuntimeResources=0 duplicates=0 atlas=192x96 sha256=${atlasHash}")
     }
 }

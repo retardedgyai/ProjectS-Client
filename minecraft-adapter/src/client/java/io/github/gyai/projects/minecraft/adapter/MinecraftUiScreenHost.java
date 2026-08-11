@@ -23,6 +23,9 @@ public class MinecraftUiScreenHost extends Screen {
     private final MinecraftUiInputAdapter inputAdapter = new MinecraftUiInputAdapter();
     private final Runnable closeAction;
     private UiTheme theme;
+    private long uiTimeMillis;
+    private int laidOutWidth = -1;
+    private int laidOutHeight = -1;
 
     protected MinecraftUiScreenHost(Component title, UiNode root, UiTheme theme) {
         this(title, root, theme, null);
@@ -60,19 +63,42 @@ public class MinecraftUiScreenHost extends Screen {
     protected void init() {
         tree.root().setBounds(new io.github.gyai.projects.ui.runtime.UiRect(0, 0, width, height));
         onUiLayout(width, height);
+        laidOutWidth = width;
+        laidOutHeight = height;
     }
 
     protected void onUiLayout(int width, int height) { }
     protected void onUiThemeChanged(UiTheme nextTheme) { }
+
+    /** Deterministic host clock seam; tests and non-Minecraft hosts can inject exact timestamps. */
+    public final void advanceUiTime(long now) {
+        if (now < uiTimeMillis) throw new IllegalArgumentException("UI time cannot move backwards");
+        uiTimeMillis = now;
+        tree.update(now);
+    }
+
+    public final long uiTimeMillis() { return uiTimeMillis; }
+
+    @Override
+    public void tick() {
+        super.tick();
+        advanceUiTime(uiTimeMillis + 50);
+    }
 
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress
     ) {
         tree.root().setBounds(new io.github.gyai.projects.ui.runtime.UiRect(0, 0, width, height));
+        if (width != laidOutWidth || height != laidOutHeight) {
+            onUiLayout(width, height);
+            laidOutWidth = width;
+            laidOutHeight = height;
+        }
         UiDrawList drawList = new UiDrawList();
         tree.render(drawList, theme);
-        new MinecraftUiRenderBackend(graphics, font).render(drawList);
+        new MinecraftUiRenderBackend(graphics, font,
+                MinecraftUiRuntimeResources.currentOrNull()).render(drawList);
         super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
     }
 
@@ -106,11 +132,12 @@ public class MinecraftUiScreenHost extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        UiEvent translated = inputAdapter.key(event, UiKeyAction.DOWN);
         if (event.key() == UiKeyEvent.KEY_ESCAPE) {
+            if (input.dispatch(translated)) return true;
             input.onScreenClosed();
             return super.keyPressed(event);
         }
-        UiEvent translated = inputAdapter.key(event, UiKeyAction.DOWN);
         return input.dispatch(translated) || super.keyPressed(event);
     }
 

@@ -1,0 +1,23 @@
+{
+  "schema": "projects-client-runtime-resources-v1",
+  "owner": "projects_client",
+  "offline": true,
+  "bundled_once_in": "projects-client",
+  "excluded_from": ["projects-devtools"],
+  "fonts": {
+    "uiSans": "assets/projects_client/fonts/inter",
+    "japaneseFallback": "assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf",
+    "technicalMono": "assets/projects_client/fonts/jetbrains-mono",
+    "licenseManifest": "assets/projects_client/licenses/fonts/typography-font-manifest.json"
+  },
+  "icons": {
+    "atlas": "assets/projects_client/textures/ui/studio_icons_24.png",
+    "atlasDimensions": [192, 96],
+    "atlasCellSize": 24,
+    "atlasSha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326",
+    "atlasBackedKeys": ["projects:shape", "projects:motion", "projects:phase", "projects:trail", "projects:timeline", "projects:particle", "projects:appearance", "projects:inspector"],
+    "proceduralFallback": true,
+    "licenseManifest": "assets/projects_client/licenses/icons/manifest.json"
+  },
+  "resourceReload": "io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources"
+}

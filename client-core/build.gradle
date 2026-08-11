@@ -8,6 +8,7 @@ plugins {
     id 'maven-publish'
 }
 base { archivesName = 'projects-client' }
+evaluationDependsOn(':minecraft-adapter')
 // Loom 1.17 no longer publishes this historical project variant automatically.
 // Keep the explicit named mapping used by optional Fabric companions.
 configurations {
@@ -32,6 +33,15 @@ dependencies {
     clientImplementation project(':minecraft-adapter')
     include project(':ui-runtime')
     include project(':minecraft-adapter')
+}
+// The adapter keeps its Minecraft-only implementation in the client source set.
+// Preserve the nested-runtime dependency above while exposing that output to the
+// client compilation without changing any public API.
+sourceSets {
+    client {
+        compileClasspath += project(':minecraft-adapter').sourceSets.client.output
+        runtimeClasspath += project(':minecraft-adapter').sourceSets.client.output
+    }
 }
 processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand 'version': project.version } }
 tasks.withType(JavaCompile).configureEach { options.release = 25; options.encoding = 'UTF-8' }

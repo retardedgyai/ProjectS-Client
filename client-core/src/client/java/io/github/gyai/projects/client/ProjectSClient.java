@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.render.ProjectSIconAtlas;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources;
 import io.github.gyai.projects.client.beta.BetaCapabilityAcknowledgementPayload;
 import io.github.gyai.projects.client.beta.BetaCapabilityAdvertisementPayload;
 import io.github.gyai.projects.client.beta.BetaClientRuntime;
@@ -49,6 +50,9 @@ public final class ProjectSClient implements ClientModInitializer {
                 Identifier.fromNamespaceAndPath(MOD_ID, "icon_atlas_cache"),
                 (ResourceManagerReloadListener) manager ->
                         ProjectSIconAtlas.invalidateAvailability());
+        ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(
+                Identifier.fromNamespaceAndPath(MOD_ID, "ui_runtime_resources"),
+                (ResourceManagerReloadListener) MinecraftUiRuntimeResources::onResourceReload);
         PayloadTypeRegistry.serverboundPlay().register(SkillInputPayload.TYPE, SkillInputPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(HudStatePayload.TYPE, HudStatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(

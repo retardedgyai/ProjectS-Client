@@ -1,8 +1,7 @@
 package io.github.gyai.projects.minecraft.adapter;
 
-import io.github.gyai.projects.ui.runtime.AtlasIcon;
-import io.github.gyai.projects.ui.runtime.IconSource;
-import io.github.gyai.projects.ui.runtime.ProceduralIcon;
+import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconRenderer;
+import io.github.gyai.projects.ui.runtime.IconKey;
 import io.github.gyai.projects.ui.runtime.UiColor;
 import io.github.gyai.projects.ui.runtime.UiDrawList;
 import io.github.gyai.projects.ui.runtime.UiGradientSpan;
@@ -11,6 +10,7 @@ import io.github.gyai.projects.ui.runtime.UiRasterSpan;
 import io.github.gyai.projects.ui.runtime.UiRenderBackend;
 import io.github.gyai.projects.ui.runtime.UiRenderCommand;
 import io.github.gyai.projects.ui.runtime.UiRoundedRaster;
+import io.github.gyai.projects.ui.runtime.icon.IconState;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
@@ -21,21 +21,33 @@ import java.util.Deque;
 public final class MinecraftUiRenderBackend implements UiRenderBackend {
     private final GuiGraphicsExtractor graphics;
     private final Font font;
+    private final MinecraftUiRuntimeResources resources;
     private final MinecraftScissorBridge scissor = new MinecraftScissorBridge();
     private final Deque<UiRect> clipStack = new ArrayDeque<>();
 
     public MinecraftUiRenderBackend(GuiGraphicsExtractor graphics, Font font) {
+        this(graphics, font, null);
+    }
+
+    public MinecraftUiRenderBackend(GuiGraphicsExtractor graphics, Font font,
+                                    MinecraftUiRuntimeResources resources) {
         this.graphics = graphics;
         this.font = font;
+        this.resources = resources;
     }
 
     @Override
     public void render(UiDrawList drawList) {
         if (drawList == null) throw new NullPointerException("drawList");
         clipStack.clear();
-        for (UiRenderCommand command : drawList.commands()) render(command);
-        if (drawList.clipDepth() != 0 || !clipStack.isEmpty()) {
-            throw new IllegalStateException("Unbalanced UI draw clips");
+        if (resources != null) resources.beginFrame(graphics);
+        try {
+            for (UiRenderCommand command : drawList.commands()) render(command);
+            if (drawList.clipDepth() != 0 || !clipStack.isEmpty()) {
+                throw new IllegalStateException("Unbalanced UI draw clips");
+            }
+        } finally {
+            if (resources != null) resources.endFrame();
         }
     }
 
@@ -45,8 +57,9 @@ public final class MinecraftUiRenderBackend implements UiRenderBackend {
             case UiRenderCommand.RoundedSurface surface -> rounded(surface.bounds(), surface.radius(), surface.color());
             case UiRenderCommand.Border border -> border(border.bounds(), border.radius(), border.width(), border.color());
             case UiRenderCommand.Gradient gradient -> gradient(gradient.bounds(), gradient.radius(), gradient.top(), gradient.bottom());
-            case UiRenderCommand.Text text -> text(text.origin().x(), text.origin().y(), text.value(), text.color());
-            case UiRenderCommand.Icon icon -> icon(icon.bounds(), icon.icon().source(), icon.tint());
+            case UiRenderCommand.Text text -> text(text);
+            case UiRenderCommand.Icon icon -> icon(icon.bounds(), icon.icon().key(), IconState.NORMAL, icon.tint());
+            case UiRenderCommand.StatefulIcon icon -> icon(icon.bounds(), icon.icon().key(), icon.state(), icon.tint());
             case UiRenderCommand.Shadow shadow -> shadow(shadow.bounds(), shadow.radius(), shadow.color());
             case UiRenderCommand.PushClip push -> {
                 clipStack.push(push.clip());
@@ -85,18 +98,19 @@ public final class MinecraftUiRenderBackend implements UiRenderBackend {
         }
     }
 
-    private void text(double x, double y, String value, UiColor color) {
-        if (font != null) graphics.text(font, value, (int) Math.round(x), (int) Math.round(y), color.argb(), false);
+    private void text(UiRenderCommand.Text command) {
+        if (resources != null && resources.renderText(graphics, command)) return;
+        if (font != null) {
+            graphics.text(font, command.value(), (int) Math.round(command.origin().x()),
+                    (int) Math.round(command.origin().y()), command.color().argb(), false);
+        }
     }
 
-    private void icon(UiRect rect, IconSource source, UiColor tint) {
-        if (source instanceof ProceduralIcon) {
-            graphics.outline(left(rect), top(rect), Math.max(1, right(rect) - left(rect)),
-                    Math.max(1, bottom(rect) - top(rect)), tint.argb());
-        } else if (source instanceof AtlasIcon) {
-            // Atlas binding is intentionally a Stage 2 resource operation; this is a visible skeleton.
-            graphics.outline(left(rect), top(rect), Math.max(1, right(rect) - left(rect)),
-                    Math.max(1, bottom(rect) - top(rect)), tint.argb());
+    private void icon(UiRect rect, IconKey key, IconState state, UiColor tint) {
+        if (resources != null) {
+            resources.renderIcon(graphics, rect, key, state, tint);
+        } else {
+            MinecraftIconRenderer.render(graphics, key, rect, state, tint, null);
         }
     }
 

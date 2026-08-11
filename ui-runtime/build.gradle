@@ -21,7 +21,24 @@ tasks.register('uiRuntimeFoundationTest', JavaExec) {
     jvmArgs '-ea'
 }
 
-tasks.named('test') { dependsOn 'uiRuntimeFoundationTest' }
+def stageTwoPureChecks = [
+        typographyRuntimeTest: 'io.github.gyai.projects.ui.runtime.typography.TypographyRuntimeTypographyTest',
+        themeRuntimeTest: 'io.github.gyai.projects.ui.runtime.theme.UiThemeRuntimeTest',
+        iconRuntimeTest: 'io.github.gyai.projects.ui.runtime.icon.IconRuntimeFocusedTest',
+        componentKitTest: 'io.github.gyai.projects.ui.runtime.component.LiquidGlassComponentStateMachineTest',
+        uiInputHostTimelineTest: 'io.github.gyai.projects.ui.runtime.component.UiInputHostTimelineIntegrationTest'
+]
+stageTwoPureChecks.each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = className
+        workingDir rootProject.projectDir
+        jvmArgs '-ea'
+    }
+}
+
+tasks.named('test') { dependsOn 'uiRuntimeFoundationTest', stageTwoPureChecks.keySet() }
 
 tasks.register('verifyUiRuntimePurity') {
     dependsOn tasks.named('jar')

@@ -42,7 +42,23 @@ tasks.register('tier1RendererTest', JavaExec) {
     jvmArgs '-ea'
 }
 
-tasks.named('test') { dependsOn 'adapterSkeletonTest', 'tier1RendererTest' }
+def stageTwoAdapterChecks = [
+        typographyAdapterTest: 'io.github.gyai.projects.minecraft.adapter.typography.MinecraftTypographyAdapterTest',
+        iconAdapterTest: 'io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAdapterFocusedTest',
+        componentAdapterTest: 'io.github.gyai.projects.minecraft.adapter.component.MinecraftLiquidGlassComponentAdapterTest',
+        hostAdapterTest: 'io.github.gyai.projects.minecraft.adapter.MinecraftUiScreenHostPathTest'
+]
+stageTwoAdapterChecks.each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = className
+        workingDir rootProject.projectDir
+        jvmArgs '-ea'
+    }
+}
+
+tasks.named('test') { dependsOn 'adapterSkeletonTest', 'tier1RendererTest', stageTwoAdapterChecks.keySet() }
 
 tasks.register('verifyMinecraftAdapterBoundary') {
     dependsOn tasks.named('jar')
