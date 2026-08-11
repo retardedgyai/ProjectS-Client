@@ -32,6 +32,12 @@ tasks.register('uiKitLayoutTest') {
     group = 'verification'
     dependsOn ':devtools:projectSUiKitLayoutTest', ':devtools:projectSUiKitV02LayoutTest'
 }
+tasks.register('studioTest') {
+    group = 'verification'
+    dependsOn ':devtools:studioShellLayoutTest', ':minecraft-adapter:studioViewportTest',
+            ':devtools:studioToolInspectorTest', ':devtools:studioTimelineAssetBrowserTest',
+            ':devtools:studioWorkspaceTest'
+}
 tasks.register('verifyUiRuntimePurity') {
     group = 'verification'
     dependsOn ':ui-runtime:verifyUiRuntimePurity'
@@ -61,7 +67,8 @@ tasks.named('check') {
     dependsOn lifecycleProjects.collect { "${it}:check" }
     dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
             'verifyRuntimeArtifactOwnership', 'verifyRuntimeResourceManifest',
-            'typographyTest', 'themeTest', 'iconTest', 'componentTest', 'uiKitLayoutTest'
+            'typographyTest', 'themeTest', 'iconTest', 'componentTest', 'uiKitLayoutTest', 'studioTest',
+            'verifyStudioSourcePolicy'
 }
 
 tasks.named('clean') { dependsOn lifecycleProjects.collect { "${it}:clean" } }
@@ -158,6 +165,42 @@ tasks.register('verifySourceSetBoundaries') {
             }
         }
         logger.lifecycle('SOURCE_BOUNDARY_PASS: pure source sets, Studio client boundary and adapter ownership are valid')
+    }
+}
+
+tasks.register('verifyStudioSourcePolicy') {
+    group = 'verification'
+    description = 'Verifies Studio ownership, renderer-neutral presentation and legacy-menu registration.'
+    doLast {
+        def studioRoots = [
+                file('devtools/src/main/java/io/github/gyai/projects/devtools/studio'),
+                file('devtools/src/client/java/io/github/gyai/projects/devtools/studio'),
+                file('minecraft-adapter/src/client/java/io/github/gyai/projects/minecraft/adapter/studio')
+        ]
+        def platformImport = ~/(?m)^\s*import\s+(net\.minecraft|net\.fabricmc|com\.mojang|org\.lwjgl)(\.|;)/
+        def forbiddenVisual = ~/(?s)\b(ButtonWidget|AbstractWidget|Minecraft\s+Font|Slot|Framebuffer|WorldRenderer|RenderTarget|renderBackground|blur)\b/
+        studioRoots.each { root ->
+            if (!root.isDirectory()) throw new GradleException("Studio source root missing: ${root}")
+            fileTree(root).matching { include '**/*.java' }.files.each { source ->
+                if (source.text =~ platformImport) throw new GradleException("Studio source imports platform API: ${source}")
+                if (source.text =~ forbiddenVisual) throw new GradleException("Studio source uses forbidden vanilla/renderer visual dependency: ${source}")
+            }
+        }
+        def screen = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSStudioScreen.java')
+        if (!screen.isFile()) throw new GradleException('ProjectSStudioScreen must be DevTools-owned')
+        def menu = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSDevToolsMenuScreen.java').text
+        ['ProjectS Studio', 'Skill Editor', 'Editor Frontend', 'UI Kit / Stage 1'].each { label ->
+            if (!menu.contains(label)) throw new GradleException("Developer Tools menu entry missing: ${label}")
+        }
+        if (fileTree('minecraft-adapter/src').matching { include '**/fabric.mod.json' }.files) {
+            throw new GradleException('Studio adapter boundary must remain library-only')
+        }
+        if (fileTree('devtools/src/main/java/io/github/gyai/projects/devtools/studio').matching {
+            include '**/*Payload*.java', '**/*Protocol*.java'
+        }.files) {
+            throw new GradleException('Studio presentation must not own protocol/server paths')
+        }
+        logger.lifecycle('STUDIO_SOURCE_POLICY_PASS: DevTools ownership, renderer-neutral chrome, adapter library boundary and feature switch are valid')
     }
 }
 

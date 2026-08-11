@@ -57,8 +57,16 @@ stageTwoAdapterChecks.each { taskName, className ->
         jvmArgs '-ea'
     }
 }
+tasks.register('studioViewportTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.minecraft.adapter.studio.viewport.StudioViewportInputTest'
+    workingDir rootProject.projectDir
+    jvmArgs '-ea'
+}
 
 tasks.named('test') { dependsOn 'adapterSkeletonTest', 'tier1RendererTest', stageTwoAdapterChecks.keySet() }
+tasks.named('check') { dependsOn 'studioViewportTest' }
 
 tasks.register('verifyMinecraftAdapterBoundary') {
     dependsOn tasks.named('jar')

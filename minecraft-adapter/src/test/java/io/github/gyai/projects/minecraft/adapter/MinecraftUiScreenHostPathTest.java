@@ -1,5 +1,6 @@
 package io.github.gyai.projects.minecraft.adapter;
 
+import io.github.gyai.projects.minecraft.adapter.studio.viewport.StudioViewportInputTest;
 import io.github.gyai.projects.ui.runtime.UiNode;
 import io.github.gyai.projects.ui.runtime.UiInputRouter;
 import io.github.gyai.projects.ui.runtime.UiRect;
@@ -13,6 +14,8 @@ import net.minecraft.client.input.MouseButtonInfo;
 import sun.misc.Unsafe;
 
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /** Non-GUI screen-boundary test: translated Minecraft input reaches the shared router first. */
 public final class MinecraftUiScreenHostPathTest {
@@ -36,7 +39,17 @@ public final class MinecraftUiScreenHostPathTest {
                 "host outside click restores focus");
         host.advanceUiTime(1234);
         check(host.uiTimeMillis() == 1234, "host clock accepts deterministic timestamp");
-        System.out.println("MINECRAFT_UI_SCREEN_HOST_PATH_PASS: translated Escape outside-click focus-restore clock no-GUI");
+        check(!host.isPauseScreen(), "Studio host remains non-pausing for world viewport visibility");
+        try {
+            String source = Files.readString(Path.of(
+                    "minecraft-adapter/src/client/java/io/github/gyai/projects/minecraft/adapter/MinecraftUiScreenHost.java"));
+            check(!source.contains("renderBackground("),
+                    "host does not add an opaque vanilla background before the world");
+        } catch (java.io.IOException error) {
+            throw new AssertionError("host transparency source contract unavailable", error);
+        }
+        StudioViewportInputTest.main(new String[0]);
+        System.out.println("MINECRAFT_UI_SCREEN_HOST_PATH_PASS: translated Escape outside-click focus-restore clock non-pausing viewport");
     }
 
     private static MinecraftUiScreenHost allocateHost(UiNode root) {
