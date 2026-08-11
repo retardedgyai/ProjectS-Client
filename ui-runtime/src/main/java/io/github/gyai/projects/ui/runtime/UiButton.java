@@ -1,7 +1,7 @@
 package io.github.gyai.projects.ui.runtime;
 
 /** Pure button state machine; a Minecraft Widget is deliberately not involved. */
-public final class UiButton extends UiNode {
+public class UiButton extends UiNode {
     private String label;
     private final Runnable action;
     private UiMaterialTier materialTier = UiMaterialTier.ACCENT_GLASS;
@@ -10,6 +10,13 @@ public final class UiButton extends UiNode {
     private boolean pointerPressed;
     private int keyboardPressedKey = -1;
     private boolean presentationPressed;
+    private boolean selected;
+    private long timelineNow;
+    private UiButtonState transitionedState = UiButtonState.NORMAL;
+    private double transitionFrom;
+    private long transitionStartedAt;
+    private boolean transitionActive;
+    private static final long TRANSITION_DURATION = 180;
 
     public UiButton(String id, UiRect bounds, String label) { this(id, bounds, label, () -> { }); }
 
@@ -23,7 +30,11 @@ public final class UiButton extends UiNode {
     }
 
     public String label() { return label; }
-    public UiButton setLabel(String next) { label = next == null ? "" : next; return this; }
+    public UiButton setLabel(String next) {
+        label = next == null ? "" : next;
+        setAccessibility(accessibility().withLabel(label));
+        return this;
+    }
     public UiMaterialTier materialTier() { return materialTier; }
     public UiButton setMaterialTier(UiMaterialTier next) {
         if (next == null) throw new NullPointerException("materialTier");
@@ -43,12 +54,63 @@ public final class UiButton extends UiNode {
     /** Presentation-only override used by the UI Kit gallery; input sources remain separate. */
     public UiButton setPressed(boolean next) { presentationPressed = next; return this; }
 
+    public boolean selected() { return selected; }
+
+    public UiButton setSelected(boolean next) {
+        selected = next;
+        setAccessibility(accessibility().withSelected(next));
+        return this;
+    }
+
     public UiButtonState state() {
         if (!isEffectivelyEnabled()) return UiButtonState.DISABLED;
         if (pressed()) return UiButtonState.PRESSED;
+        if (selected) return UiButtonState.SELECTED;
         if (hovered) return UiButtonState.HOVER;
         if (focused()) return UiButtonState.FOCUSED;
         return UiButtonState.NORMAL;
+    }
+
+    /** Explicit timeline hook for deterministic hover/selection animation sampling. */
+    public final void advanceTo(long now) {
+        if (now < timelineNow) throw new IllegalArgumentException("timeline cannot move backwards");
+        timelineNow = now;
+        ensureTransition();
+    }
+
+    public final long timelineNow() { return timelineNow; }
+
+    public final double transitionProgress(long now) {
+        if (now < timelineNow) throw new IllegalArgumentException("timeline cannot move backwards");
+        ensureTransition();
+        if (!transitionActive) return 1;
+        if (TRANSITION_DURATION == 0 || now >= transitionStartedAt + TRANSITION_DURATION) return 1;
+        if (now <= transitionStartedAt) return 0;
+        return (double) (now - transitionStartedAt) / TRANSITION_DURATION;
+    }
+
+    public final double transitionValue(long now) {
+        double linear = transitionProgress(now);
+        double eased = linear * linear * (3 - 2 * linear);
+        return transitionFrom + (1 - transitionFrom) * eased;
+    }
+
+    private void ensureTransition() {
+        UiButtonState next = state();
+        if (next == transitionedState) return;
+        double previous = transitionActive ? transitionValueWithoutRefresh(timelineNow) : 0;
+        transitionedState = next;
+        transitionFrom = previous;
+        transitionStartedAt = timelineNow;
+        transitionActive = true;
+    }
+
+    private double transitionValueWithoutRefresh(long now) {
+        if (now >= transitionStartedAt + TRANSITION_DURATION) return 1;
+        if (now <= transitionStartedAt || TRANSITION_DURATION == 0) return transitionFrom;
+        double linear = (double) (now - transitionStartedAt) / TRANSITION_DURATION;
+        double eased = linear * linear * (3 - 2 * linear);
+        return transitionFrom + (1 - transitionFrom) * eased;
     }
 
     @Override
@@ -73,7 +135,7 @@ public final class UiButton extends UiNode {
             boolean activate = keyboardPressedKey == key.key()
                     && focused() && isEffectivelyVisible() && isEffectivelyEnabled();
             if (keyboardPressedKey == key.key()) keyboardPressedKey = -1;
-            if (activate) { action.run(); return true; }
+            if (activate) { activate(); return true; }
         }
         return false;
     }
@@ -107,7 +169,7 @@ public final class UiButton extends UiNode {
         boolean activate = pointerPressed && globalBounds().contains(position);
         pointerPressed = false;
         hovered = globalBounds().contains(position);
-        if (activate) action.run();
+        if (activate) activate();
         return true;
     }
 
@@ -152,23 +214,44 @@ public final class UiButton extends UiNode {
 
     @Override
     protected void appendSelf(UiDrawList drawList, UiTheme theme, UiRect globalBounds, UiRect clip) {
+        drawButtonFrame(drawList, theme, globalBounds, state());
+        drawButtonLabel(drawList, theme, globalBounds, label);
+    }
+
+    /** Hook for component subclasses such as IconButton; the action remains private by design. */
+    protected final void activate() { action.run(); }
+
+    protected final UiMaterialStyle resolvedStyle(UiTheme theme) {
+        return UiMaterialStyle.resolve(materialTier, theme);
+    }
+
+    protected final void drawButtonFrame(UiDrawList drawList, UiTheme theme,
+                                         UiRect globalBounds, UiButtonState state) {
         UiMaterialStyle style = UiMaterialStyle.resolve(materialTier, theme);
-        UiButtonState state = state();
         UiColor fill = switch (state) {
             case DISABLED -> theme.color(UiColorRole.DISABLED).withAlpha(style.fill().alpha());
             case PRESSED -> style.gradientBottom();
             case HOVER -> style.gradientTop();
-            case NORMAL, FOCUSED -> style.fill();
+            case NORMAL, FOCUSED, SELECTED -> style.fill();
         };
-        UiColor border = state == UiButtonState.FOCUSED
+        UiColor border = state == UiButtonState.FOCUSED || state == UiButtonState.SELECTED
                 ? theme.color(UiColorRole.ACCENT).withAlpha(235) : style.border();
-        UiColor textColor = state == UiButtonState.DISABLED
-                ? theme.color(UiColorRole.DISABLED) : theme.color(UiColorRole.TEXT_PRIMARY);
         drawList.shadow(globalBounds.offset(0, style.shadowSpread()), style.shadowSpread(), style.shadow());
         drawList.roundedSurface(globalBounds, radius, fill, materialTier);
         drawList.gradient(globalBounds, radius, style.gradientTop(), style.gradientBottom());
         drawList.border(globalBounds, radius, style.borderWidth(), border);
-        drawList.text(new UiPoint(globalBounds.x() + 8, globalBounds.y() + Math.max(1, (globalBounds.height() - 14) / 2)),
-                label, TextStyle.body(), textColor);
+        if (state == UiButtonState.FOCUSED) {
+            drawList.border(globalBounds.inset(new UiInsets(1.5)), Math.max(0, radius - 1.5), 1,
+                    theme.color(UiColorRole.ACCENT).withAlpha(160));
+        }
+    }
+
+    protected final void drawButtonLabel(UiDrawList drawList, UiTheme theme,
+                                         UiRect globalBounds, String text) {
+        UiColor textColor = state() == UiButtonState.DISABLED
+                ? theme.color(UiColorRole.DISABLED) : theme.color(UiColorRole.TEXT_PRIMARY);
+        drawList.text(new UiPoint(globalBounds.x() + 8,
+                        globalBounds.y() + Math.max(1, (globalBounds.height() - 14) / 2)),
+                text == null ? "" : text, TextStyle.body(), textColor);
     }
 }

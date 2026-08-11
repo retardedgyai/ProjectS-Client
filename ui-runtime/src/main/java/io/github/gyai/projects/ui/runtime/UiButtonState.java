@@ -1,3 +1,3 @@
 package io.github.gyai.projects.ui.runtime;
 
-public enum UiButtonState { NORMAL, HOVER, PRESSED, DISABLED, FOCUSED }
+public enum UiButtonState { NORMAL, HOVER, PRESSED, DISABLED, FOCUSED, SELECTED }

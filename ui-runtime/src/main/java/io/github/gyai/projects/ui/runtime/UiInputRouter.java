@@ -1,6 +1,11 @@
 package io.github.gyai.projects.ui.runtime;
 
+import io.github.gyai.projects.ui.runtime.component.Dropdown;
+import io.github.gyai.projects.ui.runtime.component.Popup;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -44,6 +49,10 @@ public final class UiInputRouter {
     }
 
     private boolean dispatchPointer(UiPointerEvent pointer) {
+        if (pointer.type() == UiPointerType.DOWN && dismissOpenOverlays(pointer.position())) {
+            cancelCaptures(UiCaptureCancelReason.EXPLICIT);
+            return true;
+        }
         UiNode captured = captures.capturedNode(pointer.pointerId()).orElse(null);
         UiNode hit = tree.hitTest(pointer.position()).orElse(null);
         UiNode hoverTarget = eligibleHoverTarget(hit);
@@ -58,6 +67,9 @@ public final class UiInputRouter {
         try {
             if (target != null && target.isEffectivelyInteractive(tree.root())
                     && (pointer.type() != UiPointerType.DOWN || target.isEffectivelyEnabled())) {
+                if (pointer.type() == UiPointerType.DOWN && target instanceof Dropdown<?> dropdown) {
+                    dropdown.bindInput(this);
+                }
                 if (pointer.type() == UiPointerType.DOWN && target.focusable()) focus.requestFocus(target);
                 handled = target.handleEvent(pointer);
                 if (pointer.type() == UiPointerType.DOWN && handled && target.isEffectivelyInteractive(tree.root())) {
@@ -114,17 +126,26 @@ public final class UiInputRouter {
 
     private boolean dispatchKey(UiKeyEvent key) {
         if (key.action() == UiKeyAction.DOWN && key.key() == UiKeyEvent.KEY_ESCAPE) {
+            boolean handled = focus.current().map(node -> node.handleEvent(key)).orElse(false);
+            if (!handled) {
+                handled = focus.modalBoundary().map(node -> node.handleEvent(key)).orElse(false);
+            }
+            boolean hadCapture = captures.size() > 0;
+            boolean hadOverlay = hasOpenOverlays();
             cancelCaptures(UiCaptureCancelReason.ESCAPE);
             clearAllHover();
-            focus.clearFocus();
-            return true;
+            if (!handled) focus.clearFocus();
+            synchronizeOpenOverlays();
+            return handled || hadCapture || hadOverlay;
         }
         if (key.action() == UiKeyAction.DOWN && key.key() == UiKeyEvent.KEY_TAB) {
             if (key.modifiers().shift()) focus.traverseBackward();
             else focus.traverseForward();
             return true;
         }
-        return focus.current().map(node -> node.handleEvent(key)).orElse(false);
+        UiNode current = focus.current().orElse(null);
+        if (current instanceof Dropdown<?> dropdown) dropdown.bindInput(this);
+        return current != null && current.handleEvent(key);
     }
 
     public void cancelCaptures(UiCaptureCancelReason reason) {
@@ -146,6 +167,7 @@ public final class UiInputRouter {
     public void onScreenClosed() {
         cancelCaptures(UiCaptureCancelReason.SCREEN_CLOSE);
         clearAllHover();
+        closeOpenOverlays();
         focus.clearFocus();
     }
 
@@ -158,7 +180,52 @@ public final class UiInputRouter {
     public void onWorldChanged() {
         cancelCaptures(UiCaptureCancelReason.WORLD_CHANGE);
         clearAllHover();
+        closeOpenOverlays();
         focus.clearFocus();
+    }
+
+    private boolean dismissOpenOverlays(UiPoint position) {
+        for (UiNode node : overlayNodes(tree.root())) {
+            if (node instanceof Popup popup && popup.isInputParticipating()
+                    && popup.handleOutsidePointer(position)) return true;
+            if (node instanceof Dropdown<?> dropdown && dropdown.open()
+                    && dropdown.handleOutsidePointer(position)) return true;
+        }
+        return false;
+    }
+
+    private boolean hasOpenOverlays() {
+        for (UiNode node : overlayNodes(tree.root())) {
+            if (node instanceof Popup popup && popup.isInputParticipating()) return true;
+            if (node instanceof Dropdown<?> dropdown && dropdown.open()) return true;
+        }
+        return false;
+    }
+
+    private void synchronizeOpenOverlays() {
+        for (UiNode node : overlayNodes(tree.root())) {
+            if (node instanceof Popup popup && popup.isInputParticipating()) popup.syncWithInput();
+            if (node instanceof Dropdown<?> dropdown) dropdown.syncWithInput();
+        }
+    }
+
+    private void closeOpenOverlays() {
+        for (UiNode node : overlayNodes(tree.root())) {
+            if (node instanceof Popup popup && popup.isOpen()) popup.close();
+            if (node instanceof Dropdown<?> dropdown && dropdown.open()) dropdown.closeDropdown();
+        }
+    }
+
+    private static List<UiNode> overlayNodes(UiNode root) {
+        ArrayList<UiNode> result = new ArrayList<>();
+        collectOverlayNodes(root, result);
+        java.util.Collections.reverse(result);
+        return result;
+    }
+
+    private static void collectOverlayNodes(UiNode node, List<UiNode> result) {
+        for (UiNode child : node.orderedChildren()) collectOverlayNodes(child, result);
+        if (node instanceof Popup || node instanceof Dropdown<?>) result.add(node);
     }
 
     private static Optional<UiNode> findById(UiNode node, String id) {

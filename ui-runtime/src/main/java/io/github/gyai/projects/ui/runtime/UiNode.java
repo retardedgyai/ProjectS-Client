@@ -116,6 +116,21 @@ public class UiNode {
         return this;
     }
 
+    /** Advances every timeline-aware component below this node at an injected logical time. */
+    public UiNode update(long now) {
+        if (now < 0) throw new IllegalArgumentException("timeline");
+        updateTree(this, now);
+        return this;
+    }
+
+    private static void updateTree(UiNode node, long now) {
+        if (node instanceof UiButton button) button.advanceTo(now);
+        else if (node instanceof io.github.gyai.projects.ui.runtime.component.GlassComponent component) {
+            component.advanceTo(now);
+        }
+        for (UiNode child : node.children) updateTree(child, now);
+    }
+
     public UiNode addChild(UiNode child) {
         if (child == null || child == this) throw new IllegalArgumentException("child");
         if (child.parent != null) throw new IllegalStateException("Node already has an owner: " + child.id);

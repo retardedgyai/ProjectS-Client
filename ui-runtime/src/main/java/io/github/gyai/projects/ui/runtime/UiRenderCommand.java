@@ -8,6 +8,7 @@ public sealed interface UiRenderCommand permits
         UiRenderCommand.Gradient,
         UiRenderCommand.Text,
         UiRenderCommand.Icon,
+        UiRenderCommand.StatefulIcon,
         UiRenderCommand.Shadow,
         UiRenderCommand.PushClip,
         UiRenderCommand.PopClip {
@@ -52,6 +53,15 @@ public sealed interface UiRenderCommand permits
 
     record Icon(UiRect bounds, IconSpec icon, UiColor tint) implements UiRenderCommand {
         public Icon { require(bounds, tint); if (icon == null) throw new IllegalArgumentException("icon"); }
+    }
+
+    /** Additive state-aware icon command; the original Icon command remains NORMAL-compatible. */
+    record StatefulIcon(UiRect bounds, IconSpec icon, io.github.gyai.projects.ui.runtime.icon.IconState state,
+                        UiColor tint) implements UiRenderCommand {
+        public StatefulIcon {
+            require(bounds, tint);
+            if (icon == null || state == null) throw new IllegalArgumentException("icon/state");
+        }
     }
 
     record Shadow(UiRect bounds, double radius, UiColor color) implements UiRenderCommand {

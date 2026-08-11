@@ -19,6 +19,14 @@ public record UiAccessibilityMetadata(
         return new UiAccessibilityMetadata(role, label, "", true, false, false);
     }
 
+    public static UiAccessibilityMetadata of(UiAccessibilityRole role, String label, String value) {
+        return new UiAccessibilityMetadata(role, label, value, true, false, false);
+    }
+
+    public UiAccessibilityMetadata withLabel(String next) {
+        return new UiAccessibilityMetadata(role, next, value, enabled, selected, focused);
+    }
+
     public UiAccessibilityMetadata withEnabled(boolean next) {
         return new UiAccessibilityMetadata(role, label, value, next, selected, focused);
     }
@@ -33,5 +41,10 @@ public record UiAccessibilityMetadata(
 
     public UiAccessibilityMetadata withValue(String next) {
         return new UiAccessibilityMetadata(role, label, next, enabled, selected, focused);
+    }
+
+    public UiAccessibilityMetadata withState(boolean nextEnabled, boolean nextSelected, boolean nextFocused) {
+        return new UiAccessibilityMetadata(role, label, value,
+                nextEnabled, nextSelected, nextFocused);
     }
 }

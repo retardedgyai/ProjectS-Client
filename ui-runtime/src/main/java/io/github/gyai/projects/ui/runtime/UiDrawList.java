@@ -42,6 +42,12 @@ public final class UiDrawList {
         return this;
     }
 
+    public UiDrawList icon(UiRect bounds, IconSpec icon, UiColor tint,
+                           io.github.gyai.projects.ui.runtime.icon.IconState state) {
+        commands.add(new UiRenderCommand.StatefulIcon(bounds, icon, state, tint));
+        return this;
+    }
+
     public UiDrawList shadow(UiRect bounds, double radius, UiColor color) {
         commands.add(new UiRenderCommand.Shadow(bounds, radius, color));
         return this;

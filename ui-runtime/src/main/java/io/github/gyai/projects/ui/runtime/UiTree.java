@@ -14,4 +14,5 @@ public final class UiTree {
     public UiNode root() { return root; }
     public Optional<UiNode> hitTest(UiPoint point) { return root.hitTest(point); }
     public void render(UiDrawList drawList, UiTheme theme) { root.render(drawList, theme); }
+    public void update(long now) { root.update(now); }
 }
