@@ -5,18 +5,252 @@ allprojects {
     version = providers.gradleProperty('mod_version').get()
 }
 
-tasks.named('check') { dependsOn ':client-core:check', ':editor-core:check', ':devtools:check' }
-tasks.named('clean') { dependsOn ':client-core:clean', ':editor-core:clean', ':devtools:clean' }
+def lifecycleProjects = [':client-core', ':editor-core', ':devtools', ':ui-runtime', ':minecraft-adapter']
+
+tasks.named('check') {
+    dependsOn lifecycleProjects.collect { "${it}:check" }
+    dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
+            'verifyRuntimeArtifactOwnership'
+}
+
+tasks.named('clean') { dependsOn lifecycleProjects.collect { "${it}:clean" } }
+
 tasks.named('build') {
-    dependsOn ':client-core:build', ':editor-core:build', ':devtools:build'
+    dependsOn lifecycleProjects.collect { "${it}:build" }
+    dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
+            'verifyRuntimeArtifactOwnership'
+}
+
+// Deployment remains available, but only by explicitly asking for this task.
+// In particular, no lifecycle task below is allowed to depend on it.
+tasks.register('deployAndStartClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicitly deploys the built client/devtools jars and opens the Minecraft Launcher.'
+    dependsOn ':client-core:build', ':devtools:build'
     doLast {
-        if (!project.hasProperty('skipAutoStart')) {
-            def core = project(':client-core').layout.buildDirectory.file("libs/projects-client-${project.version}.jar").get().asFile
-            def devtools = project(':devtools').layout.buildDirectory.file("libs/projects-devtools-${project.version}.jar").get().asFile
-            if (!core.isFile() || !devtools.isFile()) throw new GradleException('Both ProjectS mod artifacts must exist before deployment.')
-            def script = layout.projectDirectory.file('scripts/deploy-and-start-client.ps1').asFile.absolutePath
-            def process = new ProcessBuilder('powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script).inheritIO().start()
-            if (process.waitFor() != 0) throw new GradleException('Client mod deployment or Launcher restart failed.')
+        def script = layout.projectDirectory.file('scripts/deploy-and-start-client.ps1').asFile
+        exec {
+            commandLine 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', script.absolutePath
         }
+    }
+}
+
+// Compatibility aliases are intentionally explicit and are never lifecycle dependencies.
+tasks.register('deployClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicit compatibility alias for deployAndStartClient.'
+    dependsOn 'deployAndStartClient'
+}
+tasks.register('startClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicit compatibility alias for deployAndStartClient.'
+    dependsOn 'deployAndStartClient'
+}
+
+tasks.register('verifyBuildSafety') {
+    group = 'verification'
+    description = 'Verifies build/check dependency graphs contain no runtime execution task.'
+    doLast {
+        def scheduled = gradle.taskGraph.allTasks
+        def executionPrefixes = ['run', 'launch', 'start', 'deploy']
+        def isExecutionTask = { String name ->
+            def normalized = name.toLowerCase(Locale.ROOT)
+            executionPrefixes.any { prefix -> normalized == prefix || normalized.startsWith(prefix) }
+        }
+        def offenders = scheduled.findAll { candidate -> isExecutionTask(candidate.name) }
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Scheduled lifecycle graph contains runtime execution tasks: ${offenders*.path}")
+        }
+        logger.lifecycle("BUILD_SAFETY_PASS: execution-task scan scheduledGraphTasks=${scheduled.size()} "
+                + "executionTasks=0 prefixes=run*/launch*/start*/deploy*")
+    }
+}
+
+def javaSourceFiles = { String directory ->
+    def root = file(directory)
+    root.exists() ? fileTree(root).matching { include '**/*.java' }.files : []
+}
+def forbiddenImport = ~/(?m)^\s*import\s+(net\.minecraft|net\.fabricmc|com\.mojang\.blaze3d|org\.lwjgl|java\.awt)(\.|;)/
+
+tasks.register('verifySourceSetBoundaries') {
+    group = 'verification'
+    description = 'Enforces pure source-set and adapter ownership boundaries.'
+    doLast {
+        def pureSets = [
+                'ui-runtime/src/main/java',
+                'editor-core/src/main/java',
+                'client-core/src/main/java',
+                'devtools/src/main/java'
+        ]
+        pureSets.each { directory ->
+            def offenders = javaSourceFiles(directory).findAll { it.text =~ forbiddenImport }
+            if (!offenders.isEmpty()) {
+                throw new GradleException("Pure source-set boundary failed in ${directory}: ${offenders}")
+            }
+        }
+        def adapterDescriptor = file('minecraft-adapter/src/main/resources/fabric.mod.json')
+        if (adapterDescriptor.exists()) {
+            throw new GradleException('minecraft-adapter must not own a Fabric mod descriptor or entrypoint')
+        }
+        def newStudioRoot = file('devtools/src/main/java/io/github/gyai/projects/devtools/ui')
+        javaSourceFiles(newStudioRoot.path).each { source ->
+            if (source.text =~ forbiddenImport) {
+                throw new GradleException("New Studio presentation imports a platform API: ${source}")
+            }
+        }
+        def pilotClient = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSUiKitPilotScreen.java')
+        if (pilotClient.isFile()) {
+            def forbiddenStudioClient = ~/(?m)(^\s*import\s+net\.minecraft\.|\b(?:Screen|Widget|ButtonWidget|AbstractWidget|Font|GuiGraphics|DrawContext|GuiGraphicsExtractor)\b|minecraft\.setScreen\s*\()/
+            if (pilotClient.text =~ forbiddenStudioClient) {
+                throw new GradleException("New Studio client directly depends on Minecraft GUI types: ${pilotClient}")
+            }
+        }
+        logger.lifecycle('SOURCE_BOUNDARY_PASS: pure source sets, Studio client boundary and adapter ownership are valid')
+    }
+}
+
+tasks.register('verifyProtocolFixtureParity') {
+    group = 'verification'
+    description = 'Checks that the existing protocol fixture set remains present and readable.'
+    doLast {
+        def required = [
+                'client-core/src/test/resources/protocol/ability-vfx-appearance-v01-catalog.txt',
+                'client-core/src/test/resources/protocol/ability-vfx-validation-v1.txt',
+                'client-core/src/test/resources/protocol/beta-protocol-v1-vectors.json',
+                'client-core/src/test/resources/protocol/fire-elements-server-publisher-v1.json'
+        ]
+        required.each { path ->
+            def fixture = file(path)
+            if (!fixture.isFile() || fixture.length() == 0) {
+                throw new GradleException("Protocol fixture missing or empty: ${path}")
+            }
+        }
+        logger.lifecycle("PROTOCOL_FIXTURE_PASS: ${required.size()} required fixtures are present")
+    }
+}
+
+def collectZipEntries
+collectZipEntries = { byte[] bytes, String prefix, List<String> output ->
+    def input = new java.util.zip.ZipInputStream(new ByteArrayInputStream(bytes))
+    try {
+        java.util.zip.ZipEntry entry
+        while ((entry = input.nextEntry) != null) {
+            if (entry.isDirectory()) continue
+            def name = prefix + entry.name
+            output.add(name)
+            if (entry.name.toLowerCase(Locale.ROOT).endsWith('.jar')) {
+                def nested = new ByteArrayOutputStream()
+                input.transferTo(nested)
+                collectZipEntries(nested.toByteArray(), name + '!', output)
+            }
+        }
+    } finally {
+        input.close()
+    }
+}
+
+tasks.register('verifyRuntimeArtifactOwnership') {
+    group = 'verification'
+    description = 'Verifies nested runtime JAR counts and complete class/resource ownership across client artifacts.'
+    dependsOn ':client-core:jar', ':devtools:jar'
+    doLast {
+        def artifacts = [
+                client: project(':client-core').layout.buildDirectory.file("libs/projects-client-${project.version}.jar").get().asFile,
+                devtools: project(':devtools').layout.buildDirectory.file("libs/projects-devtools-${project.version}.jar").get().asFile
+        ]
+        def runtimeModules = [
+                'ui-runtime': [
+                        jarPrefix: 'ui-runtime-',
+                        classPrefix: 'io/github/gyai/projects/ui/runtime/'
+                ],
+                'minecraft-adapter': [
+                        jarPrefix: 'minecraft-adapter-',
+                        classPrefix: 'io/github/gyai/projects/minecraft/adapter/'
+                ]
+        ]
+        def logicalName = { String entry ->
+            def marker = entry.lastIndexOf('!')
+            marker >= 0 ? entry.substring(marker + 1) : entry
+        }
+        def isClassOrResource = { String entry ->
+            !entry.endsWith('/')
+                    && entry != 'META-INF/MANIFEST.MF'
+                    // Loom injects this synthetic descriptor into every included library;
+                    // it is packaging metadata, not a runtime module resource.
+                    && entry != 'fabric.mod.json'
+                    && !entry.startsWith('META-INF/maven/')
+                    && !entry.endsWith('.SF') && !entry.endsWith('.RSA') && !entry.endsWith('.DSA')
+        }
+        def entriesByArtifact = [:]
+        artifacts.each { label, artifact ->
+            if (!artifact.isFile()) throw new GradleException("Artifact missing: ${artifact}")
+            def entries = new ArrayList<String>()
+            collectZipEntries(artifact.bytes, '', entries)
+            entriesByArtifact[label] = entries
+        }
+
+        def ownedRuntimeEntries = new LinkedHashSet<String>()
+        runtimeModules.each { name, specification ->
+            def nestedPattern = ~/(^|!)META-INF\/jars\/${java.util.regex.Pattern.quote(specification.jarPrefix)}[^\/!]+\.jar$/
+            def clientNested = entriesByArtifact.client.findAll { it ==~ nestedPattern }
+            def devtoolsNested = entriesByArtifact.devtools.findAll { it ==~ nestedPattern }
+            if (clientNested.size() != 1 || clientNested[0].contains('!')) {
+                throw new GradleException("projects_client must contain exactly one ${name} nested JAR, found ${clientNested}")
+            }
+            if (!devtoolsNested.isEmpty()) {
+                throw new GradleException("projects_devtools must contain zero ${name} nested JARs, found ${devtoolsNested}")
+            }
+
+            String nestedPath = clientNested[0]
+            def nestedContents = entriesByArtifact.client.findAll { it.startsWith(nestedPath + '!') }
+                    .collect { logicalName(it) }
+                    .findAll { isClassOrResource(it) }
+            if (nestedContents.isEmpty()) throw new GradleException("${name} nested JAR is empty")
+            def duplicateNested = nestedContents.groupBy { it }.findAll { _, values -> values.size() > 1 }
+            if (!duplicateNested.isEmpty()) {
+                throw new GradleException("${name} nested JAR duplicates class/resource entries: ${duplicateNested.keySet()}")
+            }
+            def classes = nestedContents.findAll { it.endsWith('.class') }
+            if (classes.isEmpty() || !classes.every { it.startsWith(specification.classPrefix) }) {
+                throw new GradleException("${name} nested JAR class ownership is outside ${specification.classPrefix}")
+            }
+            def outsideNestedClasses = entriesByArtifact.client.findAll { entry ->
+                def logical = logicalName(entry)
+                isClassOrResource(logical) && logical.startsWith(specification.classPrefix)
+                        && logical.endsWith('.class') && !entry.startsWith(nestedPath + '!')
+            }
+            if (!outsideNestedClasses.isEmpty()) {
+                throw new GradleException("projects_client has ${name} classes outside its one nested JAR: ${outsideNestedClasses}")
+            }
+            ownedRuntimeEntries.addAll(nestedContents)
+
+            def clientOccurrences = entriesByArtifact.client.findAll { entry ->
+                isClassOrResource(logicalName(entry)) && ownedRuntimeEntries.contains(logicalName(entry))
+            }.groupBy { logicalName(it) }
+            def clientDuplicates = clientOccurrences.findAll { _, values -> values.size() != 1 }
+            if (!clientDuplicates.isEmpty()) {
+                throw new GradleException("projects_client duplicates ${name} class/resource ownership: ${clientDuplicates.keySet()}")
+            }
+            logger.lifecycle("ARTIFACT_OWNERSHIP: projects_client ${name} nestedJars=1 classCount=${classes.size()} "
+                    + "classResourceCount=${nestedContents.size()}")
+        }
+
+        def devtoolsDuplicates = entriesByArtifact.devtools.findAll { entry ->
+            def logical = logicalName(entry)
+            isClassOrResource(logical)
+                    && (ownedRuntimeEntries.contains(logical)
+                    || runtimeModules.any { _, specification -> logical.startsWith(specification.classPrefix) && logical.endsWith('.class') })
+        }
+        if (!devtoolsDuplicates.isEmpty()) {
+            throw new GradleException("projects_devtools duplicates runtime class/resource entries: ${devtoolsDuplicates}")
+        }
+        runtimeModules.each { name, specification ->
+            logger.lifecycle("ARTIFACT_OWNERSHIP: projects_devtools ${name} nestedJars=0 classCount=0 "
+                    + "classResourceCount=0")
+        }
+        logger.lifecycle('NESTED_ARTIFACT_PASS: projects_client owns exactly one ui-runtime and minecraft-adapter nested JAR; '
+                + 'all runtime class/resource entries are unique (standard and synthetic Loom metadata excluded) and '
+                + 'projects_devtools owns zero runtime duplicates')
     }
 }
