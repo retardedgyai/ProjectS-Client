@@ -1,0 +1,19 @@
+{
+  "catalog": "ProjectS Studio icon runtime v0.1",
+  "provenance": "All procedural geometry and atlas slot metadata in this directory's runtime contract are original ProjectS work.",
+  "third_party_assets": [],
+  "license": "ProjectS source license applies to the original runtime geometry; no third-party artwork is bundled.",
+  "atlas_policy": "Atlas artwork is original ProjectS procedural geometry rasterized to transparent alpha-only cells; no baked tint/glow is stored, and procedural geometry remains the authoritative fallback.",
+  "atlas": {
+    "resource": "assets/projects_client/textures/ui/studio_icons_24.png",
+    "dimensions": [192, 96],
+    "cell_size": 24,
+    "columns": 8,
+    "rows": 4,
+    "backed_keys": ["projects:shape", "projects:motion", "projects:phase", "projects:trail", "projects:timeline", "projects:particle", "projects:appearance", "projects:inspector"],
+    "generated_by": "scripts/generate-studio-icon-atlas.py",
+    "sha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326",
+    "third_party_artwork": false
+  },
+  "runtime_downloads": false
+}

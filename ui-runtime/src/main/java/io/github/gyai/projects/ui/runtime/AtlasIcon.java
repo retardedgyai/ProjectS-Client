@@ -7,4 +7,10 @@ public record AtlasIcon(String atlasId, UiRect region) implements IconSource {
             throw new IllegalArgumentException("atlasId/region");
         }
     }
+
+    public static AtlasIcon of(String atlasId, UiRect region) {
+        return new AtlasIcon(atlasId, region);
+    }
+
+    public String resourceId() { return atlasId; }
 }

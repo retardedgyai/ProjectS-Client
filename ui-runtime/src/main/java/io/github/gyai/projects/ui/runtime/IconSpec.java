@@ -16,5 +16,15 @@ public record IconSpec(IconKey key, IconSource source, UiColorRole tintRole) {
         return new IconSpec(key, new AtlasIcon(atlasId, region), UiColorRole.TEXT_PRIMARY);
     }
 
+    public static IconSpec missing(IconKey key) {
+        return procedural(key, "missing");
+    }
+
     public IconSpec tinted(UiColorRole role) { return new IconSpec(key, source, role); }
+
+    public IconSpec withTintRole(UiColorRole role) { return tinted(role); }
+
+    public boolean isProcedural() { return source.isProcedural(); }
+
+    public boolean isAtlasBacked() { return source.isAtlasBacked(); }
 }
