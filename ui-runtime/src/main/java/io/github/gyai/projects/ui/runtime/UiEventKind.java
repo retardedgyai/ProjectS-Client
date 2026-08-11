@@ -1,0 +1,6 @@
+package io.github.gyai.projects.ui.runtime;
+
+public enum UiEventKind {
+    POINTER_MOVE, POINTER_ENTER, POINTER_LEAVE, POINTER_DOWN, POINTER_UP, POINTER_CANCEL,
+    SCROLL, KEY_DOWN, KEY_UP, TEXT_INPUT, FOCUS_REQUEST
+}
