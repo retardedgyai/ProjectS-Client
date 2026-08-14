@@ -25,8 +25,8 @@ public final class ProjectSScreenManager {
             }
 
             Screens.getWidgets(screen).add(Button.builder(
-                            Component.literal("PS"),
-                            button -> client.setScreen(new ProjectSMenuScreen(screen))
+                    Component.literal("PS"),
+                            button -> ProjectSMenuScreen.openIfReady(client, screen)
                     )
                     .bounds(5, 5, 26, 18)
                     .tooltip(Tooltip.create(Component.literal("ProjectS メニューを開く")))

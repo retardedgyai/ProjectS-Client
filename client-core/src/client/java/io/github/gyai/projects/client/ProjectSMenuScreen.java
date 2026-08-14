@@ -1,31 +1,148 @@
 package io.github.gyai.projects.client;
 
-import io.github.gyai.projects.client.menu.ProjectSMenuExtension;
-import io.github.gyai.projects.client.menu.ProjectSMenuExtensions;
-import io.github.gyai.projects.client.ui.screen.ProjectSThemeScreen;
+import io.github.gyai.projects.client.shell.ClientShellModel;
+import io.github.gyai.projects.client.shell.ClientShellNarration;
+import io.github.gyai.projects.client.shell.SampleClientShellDataSource;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRenderProfile;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiScreenHost;
+import io.github.gyai.projects.ui.runtime.UiAccessibilityMetadata;
+import io.github.gyai.projects.ui.runtime.UiKeyEvent;
+import io.github.gyai.projects.ui.runtime.UiTheme;
+import io.github.gyai.projects.ui.runtime.UiNode;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
+import net.minecraft.client.input.KeyEvent;
 
-/** Player menu; developer surfaces arrive only through the core-owned extension point. */
-public final class ProjectSMenuScreen extends Screen {
-    private static final int PANEL_WIDTH = 248;
+import java.util.Optional;
+
+/** ProjectS Client Shell; the legacy parent constructor remains the inventory entry signature. */
+public final class ProjectSMenuScreen extends MinecraftUiScreenHost {
     private final Screen parent;
-    public ProjectSMenuScreen(Screen parent) { super(Component.literal("ProjectS")); this.parent = parent; }
-    @Override protected void init() {
-        var actions = new java.util.ArrayList<java.util.function.Consumer<Screen>>();
-        var labels = new java.util.ArrayList<String>(); var tips = new java.util.ArrayList<String>(); var enabled = new java.util.ArrayList<java.util.function.BooleanSupplier>();
-        labels.add("スキル一覧"); tips.add("クラス別のスキル説明と詳細ツールチップを表示します"); enabled.add(() -> true); actions.add(parent -> minecraft.setScreen(new SkillListScreen(parent)));
-        labels.add("スキル装備"); tips.add("戦闘外でウォーリアーのQ・E・R・Fを変更します"); enabled.add(WarriorLoadoutClientState::supported); actions.add(WarriorLoadoutClientState::requestOpen);
-        labels.add("テーマ"); tips.add("ProjectS UIテーマの確認と切り替えを行います"); enabled.add(() -> true); actions.add(parent -> minecraft.setScreen(new ProjectSThemeScreen(parent)));
-        for (ProjectSMenuExtension extension : ProjectSMenuExtensions.entries()) { labels.add(extension.label()); tips.add(extension.tooltip()); enabled.add(extension.enabled()); actions.add(extension.action()); }
-        int panelHeight = Math.min(height - 8, 90 + actions.size() * 28); int x = (width - PANEL_WIDTH) / 2; int y = (height - panelHeight) / 2;
-        for (int index = 0; index < actions.size(); index++) { final int current = index; Button button = addRenderableWidget(Button.builder(Component.literal(labels.get(index)), ignored -> actions.get(current).accept(this)).bounds(x + 24, y + 36 + index * 28, PANEL_WIDTH - 48, 22).tooltip(Tooltip.create(Component.literal(tips.get(index)))).build()); button.active = enabled.get(index).getAsBoolean(); }
-        addRenderableWidget(Button.builder(Component.literal("戻る"), ignored -> onClose()).bounds(x + 82, y + panelHeight - 26, 84, 20).build());
+    private final ClientShellRoot shell;
+    private final ClientShellNarration narration = new ClientShellNarration();
+
+    public ProjectSMenuScreen(Screen parent) {
+        this(parent, createShell());
     }
-    @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress) { int panelHeight = Math.min(height - 8, 90 + (3 + ProjectSMenuExtensions.entries().size()) * 28); int x=(width-PANEL_WIDTH)/2,y=(height-panelHeight)/2; graphics.fill(x,y,x+PANEL_WIDTH,y+panelHeight,0xE90B1017); graphics.outline(x,y,PANEL_WIDTH,panelHeight,0xCC344351); graphics.fill(x,y,x+PANEL_WIDTH,y+2,0xFF48C9E8); graphics.centeredText(font,title,width/2,y+16,0xFFF3F7FA); super.extractRenderState(graphics,mouseX,mouseY,tickProgress); }
-    @Override public void onClose() { minecraft.setScreen(parent); }
-    @Override public boolean isPauseScreen() { return false; }
+
+    static void openIfReady(Minecraft client, Screen parent) {
+        if (client == null || !shellVisualsReady()) return;
+        client.setScreen(new ProjectSMenuScreen(parent));
+    }
+
+    private ProjectSMenuScreen(Screen parent, ClientShellRoot shell) {
+        super("ProjectS Client Hub", shell, UiTheme.dark(), null);
+        this.parent = parent;
+        this.shell = shell;
+        shell.bindFocusRestoration(
+                () -> uiInput().focus().current().map(UiNode::id).orElse(null),
+                this::restoreFocusById);
+        shell.bindFocusReset(() -> {
+            uiInput().focus().clearFocus();
+            uiInput().focus().traverseForward();
+        });
+        shell.bindAccessibilityChanged(this::consumeAccessibility);
+    }
+
+    private static ClientShellRoot createShell() {
+        ClientShellModel model = new ClientShellModel(new SampleClientShellDataSource());
+        return new ClientShellRoot(model, shellVisualsReady());
+    }
+
+    private static boolean shellVisualsReady() {
+        try {
+            MinecraftUiRuntimeResources resources = MinecraftUiRuntimeResources.currentOrNull();
+            return resources != null && resources.clientShellVisualsReady();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    @Override
+    public MinecraftUiRenderProfile uiRenderProfile() {
+        return MinecraftUiRenderProfile.CAELESTIA_SHELL;
+    }
+
+    @Override
+    protected void onUiLayout(int width, int height) {
+        shell.layout(width, height);
+        if (shell.layoutSnapshot() != null && uiInput().focus().current().isEmpty()) {
+            uiInput().focus().traverseForward();
+        }
+        consumeAccessibility();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        shell.tick(uiTimeMillis());
+        consumeAccessibility();
+    }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
+                                   float tickProgress) {
+        super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
+        consumeAccessibility();
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (event != null && event.key() == UiKeyEvent.KEY_ESCAPE) {
+            if (!shell.model().state().isHome()) {
+                shell.dispatch(io.github.gyai.projects.client.shell.ClientShellAction.escapeToHome());
+            } else {
+                onClose();
+            }
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    private void restoreFocusById(String id) {
+        if (id == null || id.isBlank()) return;
+        findById(uiTree().root(), id).ifPresent(node -> uiInput().focus().requestFocus(node));
+    }
+
+    private void consumeAccessibility() {
+        if (!shell.visualsReadyForChild()) return;
+        UiAccessibilityMetadata metadata = uiTree().root().accessibility();
+        Optional<UiNode> focused = uiInput().focus().current();
+        if (focused.isPresent() && focused.get().accessibility().focused()) {
+            String focusLabel = focused.get().accessibility().label();
+            if (!focusLabel.isBlank()) {
+                metadata = metadata.withValue(metadata.value() + ". Focused: " + focusLabel);
+            }
+        }
+        narration.offer(metadata, uiTimeMillis()).ifPresent(this::speak);
+        narration.flush(uiTimeMillis()).ifPresent(this::speak);
+    }
+
+    private void speak(String message) {
+        try {
+            if (minecraft != null && minecraft.getNarrator() != null) {
+                minecraft.getNarrator().saySystemNow(net.minecraft.network.chat.Component.literal(message));
+            }
+        } catch (RuntimeException ignored) {
+            // Narration is best effort; the pure metadata and focus contract remains intact.
+        }
+    }
+
+    private static Optional<UiNode> findById(UiNode node, String id) {
+        if (node.id().equals(id)) return Optional.of(node);
+        for (UiNode child : node.children()) {
+            Optional<UiNode> found = findById(child, id);
+            if (found.isPresent()) return found;
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public void onClose() {
+        uiInput().onScreenClosed();
+        if (minecraft == null || parent == null) super.onClose();
+        else minecraft.setScreen(parent);
+    }
 }
