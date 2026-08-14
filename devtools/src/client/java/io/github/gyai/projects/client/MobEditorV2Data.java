@@ -29,6 +29,7 @@ public final class MobEditorV2Data {
 
     public static Mob readMob(FriendlyByteBuf buffer) {
         MobEditorData.Mob base = readStrictMob(buffer);
+        validateMobForV2(base);
         int count = buffer.readUnsignedByte();
         if (count > MAX_ABILITY_IDS) throw new IllegalArgumentException("Too many abilities");
         ArrayList<String> ids = new ArrayList<>(count);
@@ -201,6 +202,9 @@ public final class MobEditorV2Data {
     private static void validateMobForV2(MobEditorData.Mob mob) {
         if (mob == null || mob.schemaVersion() != SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported mob schema");
+        }
+        if (!MobEditorData.finite(mob)) {
+            throw new IllegalArgumentException("Non-finite mob field");
         }
         requireUnique(mob.tags(), "Duplicate mob tag");
         if (mob.tags().size() > 32 || mob.appearance().variants().size() > 16) {

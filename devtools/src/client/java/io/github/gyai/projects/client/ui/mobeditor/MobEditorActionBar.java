@@ -11,10 +11,12 @@ public final class MobEditorActionBar {
             MobEditorLayout.Bounds bounds, int index, int count,
             String label, ProjectSButton.Kind kind, Runnable callback
     ) {
+        int safeCount = Math.max(1, count);
+        int safeIndex = Math.clamp(index, 0, safeCount - 1);
         int gap = 4;
-        int width = Math.max(42, (bounds.width() - gap * (count - 1)) / count);
-        int x = bounds.x() + index * (width + gap);
-        if (index == count - 1) width = bounds.right() - x;
+        int width = Math.max(1, (bounds.width() - gap * (safeCount - 1)) / safeCount);
+        int x = bounds.x() + safeIndex * (width + gap);
+        if (safeIndex == safeCount - 1) width = Math.max(1, bounds.right() - x);
         return new ProjectSButton(x, bounds.y(), width, bounds.height(),
                 Component.literal(label), kind, callback);
     }

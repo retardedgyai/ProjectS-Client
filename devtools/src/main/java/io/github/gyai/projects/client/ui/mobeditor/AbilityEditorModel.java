@@ -42,7 +42,7 @@ public final class AbilityEditorModel {
     }
 
     public boolean add(String id) {
-        if (assigned.size() >= 64 || assigned.contains(id)
+        if (id == null || assigned.size() >= 64 || assigned.contains(id)
                 || catalog.stream().noneMatch(item -> item.id().equals(id))) return false;
         assigned.add(id);
         return true;
@@ -54,10 +54,10 @@ public final class AbilityEditorModel {
 
     public boolean move(String id, int delta) {
         int from = assigned.indexOf(id);
-        int to = from + delta;
+        long to = (long) from + delta;
         if (from < 0 || to < 0 || to >= assigned.size()) return false;
         String value = assigned.remove(from);
-        assigned.add(to, value);
+        assigned.add((int) to, value);
         return true;
     }
 

@@ -1,7 +1,10 @@
 package io.github.gyai.projects.client;
 
+import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -21,16 +24,28 @@ import io.github.gyai.projects.client.ui.mobeditor.DuplicateRequestCorrelation;
 import io.github.gyai.projects.client.ui.mobeditor.AbilityAssignmentPanel;
 import io.github.gyai.projects.client.ui.mobeditor.MobEditorActionBar;
 import io.github.gyai.projects.client.ui.mobeditor.MobEditorLayout;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorInputLogic;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorPickerLogic;
 import io.github.gyai.projects.client.ui.mobeditor.MobEditorTabBar;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorUiLogic;
+import io.github.gyai.projects.client.ui.mobeditor.MobEditorVariantLogic;
+import io.github.gyai.projects.client.ui.mobeditor.MobItemStackCache;
+import io.github.gyai.projects.client.ui.mobeditor.MobStringPickerScreen;
+import io.github.gyai.projects.client.ui.mobeditor.LeatherColorPickerScreen;
 import io.github.gyai.projects.client.ui.mobeditor.MobListPanel;
 import io.github.gyai.projects.client.ui.mobeditor.MobPreviewPanel;
 import io.github.gyai.projects.client.ui.mobeditor.MobPropertyPanel;
-import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
+import io.github.gyai.projects.client.ui.mobeditor.widget.MobEquipmentSlotCard;
+import io.github.gyai.projects.client.ui.mobeditor.widget.MobHeadCard;
+import io.github.gyai.projects.client.ui.mobeditor.widget.MobLibraryEntry;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.screen.ProjectSThemedScreen;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.widget.ProjectSButton;
 import io.github.gyai.projects.client.ui.widget.ProjectSCard;
+import io.github.gyai.projects.client.ui.widget.ProjectSIconButton;
+import io.github.gyai.projects.client.ui.widget.ProjectSModal;
+import io.github.gyai.projects.client.ui.widget.ProjectSDropdown;
 import io.github.gyai.projects.client.ui.widget.ProjectSTextField;
 import io.github.gyai.projects.client.ui.widget.ProjectSToast;
 
@@ -40,6 +55,8 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private static final int ABILITY_ASSIGNED_PAGE_SIZE = 5;
     private static final int ABILITY_AVAILABLE_PAGE_SIZE = 4;
+    private static final String CONFLICT_ERROR =
+            "サーバー側で変更されたため、最新状態を確認してから保存してください";
 
     private final Screen parent;
     private final MobPreviewEntity preview = new MobPreviewEntity();
@@ -72,9 +89,11 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     private double previewOffsetX;
     private double previewOffsetY;
     private String searchQuery = "";
+    private String categoryFilter = "ALL";
     private int mobPage;
     private int mobListOffset;
     private String headQuery = "";
+    private String headBrowserTab = "ローカル";
     private int headPage;
     private MobEditorData.Slot selectedEquipmentSlot = MobEditorData.Slot.HEAD;
     private String appliedEntityType = "";
@@ -88,6 +107,25 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     private String lastToastMessage = "";
     private MobPropertyPanel propertyPanel;
     private boolean buildingProperty;
+    private boolean pendingSave;
+    private boolean pendingReload;
+    private boolean pendingApply;
+    private final List<MobLibraryEntry> libraryEntries = new ArrayList<>();
+
+    private static final List<String> GLOW_COLORS = List.of(
+            "WHITE", "YELLOW", "GOLD", "RED", "DARK_RED", "LIGHT_PURPLE",
+            "DARK_PURPLE", "BLUE", "DARK_BLUE", "AQUA", "DARK_AQUA",
+            "GREEN", "DARK_GREEN", "GRAY", "DARK_GRAY", "BLACK");
+    private static final List<String> LIVING_ENTITY_TYPES = List.of(
+            "ZOMBIE", "HUSK", "DROWNED", "ZOMBIE_VILLAGER", "SKELETON",
+            "STRAY", "BOGGED", "CREEPER", "SPIDER", "CAVE_SPIDER",
+            "ENDERMAN", "BLAZE", "WITCH", "PILLAGER", "VINDICATOR",
+            "EVOKER", "RAVAGER", "PIGLIN", "PIGLIN_BRUTE", "HOGLIN",
+            "ZOGLIN", "SLIME", "MAGMA_CUBE", "PHANTOM", "GUARDIAN",
+            "ELDER_GUARDIAN", "WITHER", "ENDER_DRAGON", "WARDEN",
+            "VILLAGER", "WANDERING_TRADER", "IRON_GOLEM", "SNOW_GOLEM",
+            "WOLF", "CAT", "HORSE", "SHEEP", "COW", "PIG", "CHICKEN",
+            "RABBIT", "FOX", "GOAT", "CAMEL", "ARMADILLO", "ALLAY");
 
     public MobEditorScreen(Screen parent) {
         super(Component.literal("Mob Editor"));
@@ -100,7 +138,12 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         if (knownRevision != syncedStateRevision) syncState();
         fields.clear();
         labels.clear();
+        libraryEntries.clear();
         layout = MobEditorLayout.of(width, height);
+        if (!layout.usable()) {
+            localError = "画面サイズが小さすぎます。ウィンドウを広げてください";
+            return;
+        }
         propertyPanel = new MobPropertyPanel(layout.property());
         propertyScroll = MobPropertyPanel.normalizeScroll(propertyScroll,
                 layout.property().height(), propertyContentHeight());
@@ -111,10 +154,14 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                 font, sideX, mobList.y() + 28, mobList.width() - 66, 20,
                 Component.empty(), Component.literal("検索")));
         search.setValue(searchQuery);
+        search.setMaxLength(64);
         search.setResponder(value -> {
             searchQuery = value;
-            refreshWidgets();
+            refreshLibraryEntries();
         });
+        addThemedButton(mobList.x() + 4, mobList.y() + 4,
+                Math.max(1, mobList.width() - 8), "カテゴリ: " + categoryFilter,
+                this::cycleCategoryFilter);
         button(mobList.right() - 58, mobList.y() + 28, "検索", () -> {
             requestMobPage(0);
         }, 54);
@@ -123,6 +170,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         newId = addRenderableWidget(new ProjectSTextField(
                 font, sideX, createY, mobList.width() - 66, 20,
                 Component.empty(), Component.literal("新規ID")));
+        newId.setMaxLength(64);
         addThemedButton(mobList.right() - 58, createY, 54, "作成", () -> {
             String id = newId.getValue().trim();
             if (!id.isBlank()) createDraft(id);
@@ -170,14 +218,13 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private void buildMobButtons() {
-        String query = search == null ? "" : search.getValue().trim().toLowerCase(Locale.ROOT);
+        String query = search == null ? "" : search.getValue().trim();
         List<MobEditorStatePayload.MobSummary> filtered =
                 MobEditorClientState.state().mobs().stream()
-                        .filter(value -> query.isBlank()
-                                || value.id().toLowerCase(Locale.ROOT).contains(query)
-                                || value.displayName().toLowerCase(Locale.ROOT).contains(query)
-                                || value.tags().stream().anyMatch(tag ->
-                                tag.toLowerCase(Locale.ROOT).contains(query)))
+                        .filter(value -> MobEditorUiLogic.matches(
+                                value.id(), value.displayName(), value.tags(), query))
+                        .filter(value -> MobEditorUiLogic.categoryMatches(
+                                value.category().name(), categoryFilter))
                         .toList();
         int visible = visibleMobCount();
         mobListOffset = Math.min(mobListOffset,
@@ -186,17 +233,24 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                 .skip(mobListOffset).limit(visible).toList();
         int y = MobListPanel.listViewport(layout.mobList()).y();
         for (var mob : mobs) {
-            String marker = mob.enabled() ? "" : "[無効] ";
-            MobEditorLayout.Bounds rowBounds = MobListPanel.rowBounds(layout.mobList(), y);
-            addRenderableWidget(MobListPanel.row(rowBounds,
-                    marker + "[" + mob.category() + "] " + mob.displayName() + " (" + mob.id() + ")",
-                    true, draft != null && draft.id().equals(mob.id()), () -> selectMob(mob.id())));
-            y += MobListPanel.rowStride();
+            MobLibraryEntry entry = new MobLibraryEntry(
+                    layout.mobList().x() + 4, y, layout.mobList().width() - 8,
+                    mob, draft != null && draft.id().equals(mob.id()),
+                    dirty && draft != null && draft.id().equals(mob.id()),
+                    () -> selectMob(mob.id()));
+            libraryEntries.add(addRenderableWidget(entry));
+            y += 48;
         }
     }
 
     private int visibleMobCount() {
-        return Math.max(1, MobListPanel.listViewport(layout.mobList()).height() / MobListPanel.rowStride());
+        return Math.max(1, MobListPanel.listViewport(layout.mobList()).height() / 48);
+    }
+
+    private void refreshLibraryEntries() {
+        for (MobLibraryEntry entry : libraryEntries) removeWidget(entry);
+        libraryEntries.clear();
+        if (layout != null) buildMobButtons();
     }
 
     private void requestMobPage(int requestedPage) {
@@ -206,6 +260,13 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         } else {
             localError = "通信中です。応答後にもう一度操作してください";
         }
+    }
+
+    private void cycleCategoryFilter() {
+        List<String> values = List.of("ALL", "NORMAL", "ELITE", "BOSS");
+        categoryFilter = values.get((values.indexOf(categoryFilter) + 1) % values.size());
+        mobListOffset = 0;
+        refreshLibraryEntries();
     }
 
     private void buildTab(int x, int y) {
@@ -304,7 +365,8 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             int w = layout.property().width();
             field("id", "内部ID（固定）", draft.id(), x, y, w).setEditable(false);
             field("display", "表示名", draft.displayName(), x, y + 44, w);
-            field("entity", "EntityType", draft.entityType(), x, y + 88, w);
+            addPropertyButton(x, y + 88, w,
+                    "EntityType: " + draft.entityType(), this::openEntityPicker);
             field("level", "レベル", Integer.toString(draft.level()), x, y + 132, w);
             field("tags", "タグ（,区切り）", String.join(",", draft.tags()), x, y + 176, w);
             addPropertyButton(x, y + 220, w, "カテゴリ: " + draft.category(), this::cycleCategory);
@@ -314,7 +376,8 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         }
         field("id", "内部ID（固定）", draft.id(), x, y, 174).setEditable(false);
         field("display", "表示名", draft.displayName(), x + 190, y, 174);
-        field("entity", "EntityType", draft.entityType(), x, y + 44, 174);
+        addPropertyButton(x, y + 58, 174,
+                "EntityType: " + draft.entityType(), this::openEntityPicker);
         field("level", "レベル", Integer.toString(draft.level()), x + 190, y + 44, 174);
         field("tags", "タグ（,区切り）", String.join(",", draft.tags()), x, y + 88, 364);
         addPropertyButton(x, y + 132, 174, "カテゴリ: " + draft.category(), () -> {
@@ -472,94 +535,94 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                     dirty = true;
                     rebuild();
                 });
-        addPropertyButton(x + 276, y + 16, 88, appearance.glowingColor(), () -> {
-                    collectCurrentTab();
-                    MobEditorData.Appearance current = draft.appearance();
-                    draft = withAppearance(draft, new MobEditorData.Appearance(
-                            current.scale(), current.age(), current.glowing(),
-                            nextGlowColor(current.glowingColor()), current.variants(),
-                            current.equipment()));
-                    dirty = true;
-                    rebuild();
-                });
+        addPropertyButton(x + 276, y + 16, 88, appearance.glowingColor(),
+                () -> openGlowPicker(this::updateAppearanceGlowColor));
         List<String> variantKeys = variantKeys(draft.entityType());
         for (int index = 0; index < variantKeys.size(); index++) {
             String key = variantKeys.get(index);
-            field("variant_" + key, key,
+            variantControl(key,
                     appearance.variants().getOrDefault(key,
-                            defaultVariant(draft.entityType(), key)),
-                    x + index * 126, y + 44, 112);
+                            defaultVariant(draft.entityType(), key)), x + index * 126,
+                    y + 44, 112);
         }
         boolean equipmentSupported = supportsEquipment(draft.entityType());
-        int row = 0;
+        int slotIndex = 0;
         for (MobEditorData.Slot slot : MobEditorData.Slot.values()) {
             MobEditorData.Equipment entry = appearance.equipment().get(slot);
             equipmentSources.put(slot, entry.source());
-            int rowY = y + 88 + row * 24;
-            ProjectSButton sourceButton = addPropertyButton(x, rowY, 132,
-                    (slot == selectedEquipmentSlot ? "▶" : "") + shortSlot(slot) + ":" + entry.source(), () -> {
-                        collectCurrentTab();
+            int cardX = x + (slotIndex % 2) * 184;
+            int cardY = y + 88 + (slotIndex / 2) * 54;
+            MobEquipmentSlotCard card = new MobEquipmentSlotCard(
+                    cardX, cardY, 178, slot, entry, slotIcon(slot),
+                    slot == selectedEquipmentSlot, equipmentSupported, () -> {
+                        collectCurrentTab(false);
                         selectedEquipmentSlot = slot;
-                        equipmentSources.put(slot, next(equipmentSources.get(slot)));
-                        dirty = true;
-                        rebuild();
+                        refreshWidgets();
                     });
-            sourceButton.active = equipmentSupported;
-            String value = entry.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
-                    ? entry.material() : entry.referenceId();
-            field("eq_" + slot.name(), "", value, x + 138, rowY, 226)
-                    .setEditable(equipmentSupported
-                            && entry.source() != MobEditorData.EquipmentSource.NONE);
-            row++;
+            addPropertyWidget(card);
+            slotIndex++;
         }
         MobEditorData.Equipment selected = appearance.equipment().get(selectedEquipmentSlot);
-        addPropertyButton(x, y + 238, 86, "選択:" + shortSlot(selectedEquipmentSlot), () -> {
-                    selectedEquipmentSlot = next(selectedEquipmentSlot);
-                    rebuild();
-                });
-        ProjectSButton glintButton = addPropertyButton(x + 92, y + 238, 82,
-                "Glint:" + (selected.glint() ? "ON" : "OFF"), () -> {
-                    toggleSelectedEquipment(true);
-                });
-        ProjectSButton visibleButton = addPropertyButton(x + 180, y + 238, 82,
-                "表示:" + (selected.visible() ? "ON" : "OFF"), () -> {
-                    toggleSelectedEquipment(false);
-                });
+        ProjectSButton source = addPropertyButton(x, y + 252, 150,
+                shortSlot(selectedEquipmentSlot) + " / " + selected.source(),
+                this::cycleSelectedEquipmentSource);
+        source.active = equipmentSupported;
+        String selectedValue = selected.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
+                ? selected.material() : selected.referenceId();
+        EditBox selectedItem = field("eq_" + selectedEquipmentSlot.name(),
+                "選択アイテム", selectedValue, x + 156, y + 252, 132);
+        selectedItem.setEditable(false);
+        ProjectSButton itemPicker = addPropertyButton(x + 294, y + 252, 70,
+                "選択", this::openEquipmentPicker);
+        itemPicker.active = equipmentSupported
+                && selected.source() != MobEditorData.EquipmentSource.NONE;
+        ProjectSButton glintButton = addPropertyButton(x, y + 286, 116,
+                "Glint:" + (selected.glint() ? "ON" : "OFF"),
+                () -> toggleSelectedEquipment(true));
+        ProjectSButton visibleButton = addPropertyButton(x + 122, y + 286, 116,
+                "表示:" + (selected.visible() ? "ON" : "OFF"),
+                () -> toggleSelectedEquipment(false));
         glintButton.active = equipmentSupported;
         visibleButton.active = equipmentSupported;
         field("eq_color", "革防具色 #RRGGBB", selected.color(),
-                x + 268, y + 224, 96).setEditable(equipmentSupported);
+                x + 244, y + 286, 74).setEditable(false);
+        ProjectSButton colorPicker = addPropertyButton(x + 322, y + 286, 42,
+                "色", this::openLeatherColorPicker);
+        colorPicker.active = equipmentSupported && isLeatherArmor(selectedValue);
+        ProjectSButton clear = addPropertyButton(x + 322, y + 320, 42,
+                "削除", this::clearSelectedEquipment);
+        clear.active = equipmentSupported;
 
         EditBox headSearch = field("head_search", "ヘッド検索/タグ", headQuery,
-                x, y + 268, 174);
+                x, y + 354, 174);
+        headSearch.setMaxLength(64);
         headSearch.setResponder(value -> headQuery = value);
-        button(x + 180, y + 282, "検索", () -> {
-            requestHeadPage(0);
-        }, 54);
-        button(x + 240, y + 282, "前", () -> {
-            requestHeadPage(Math.max(0, headPage - 1));
-        }, 54);
-        button(x + 300, y + 282, "次", () -> {
-            requestHeadPage(headPage + 1);
-        }, 54);
-        addPropertyButton(x, y + 334, 86, "ヘッド登録", () ->
+        button(x + 180, y + 368, "検索", () -> requestHeadPage(0), 54);
+        button(x + 240, y + 368, "前", () ->
+                requestHeadPage(Math.max(0, headPage - 1)), 54);
+        button(x + 300, y + 368, "次", () -> requestHeadPage(headPage + 1), 54);
+        addPropertyButton(x, y + 400, 110, "ヘッド登録", () ->
                 minecraft.setScreen(new HeadImportScreen(this)));
-        ProjectSButton favoriteButton = addPropertyButton(x + 92, y + 334, 104,
+        ProjectSButton favoriteButton = addPropertyButton(x + 116, y + 400, 128,
                 "お気に入り切替", () -> MobEditorClientState.updateHeadFavorite(
                         MobEditorClientState.state().headDetail()));
         favoriteButton.active = MobEditorClientState.state().headDetail() != null;
-        int headX = x;
-        for (var head : MobEditorClientState.state().heads().stream()
-                .sorted(java.util.Comparator.comparing(
-                        (MobEditorStatePayload.HeadSummary value) ->
-                                recentHeads.contains(value.id())).reversed())
-                .limit(4).toList()) {
-            addPropertyButton(headX, y + 308, 88,
-                    head.favorite() ? "★" + head.displayName() : head.displayName(), () -> {
+        addHeadTabButtons(x, y + 432, 364);
+        int headIndex = 0;
+        String selectedHeadId = appearance.equipment().get(MobEditorData.Slot.HEAD)
+                .referenceId();
+        for (var head : sortedHeads()) {
+            MobHeadCard card = new MobHeadCard(x + (headIndex % 2) * 184,
+                    y + 462 + (headIndex / 2) * 46, 178, head,
+                    head.id().equals(selectedHeadId), () -> {
                         setHeadReference(head.id());
                         MobEditorClientState.requestHead(head.id(), headQuery, headPage);
                     });
-            headX += 92;
+            addPropertyWidget(card);
+            headIndex++;
+        }
+        if (headBrowserTab.equals("外部カタログ")) {
+            addExternalCatalogDisabledCard(x, y + 462, 364);
         }
     }
 
@@ -569,6 +632,346 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         } else {
             localError = "通信中です。応答後にもう一度操作してください";
         }
+    }
+
+    private void openEntityPicker() {
+        List<MobStringPickerScreen.Entry> entries = LIVING_ENTITY_TYPES.stream()
+                .map(id -> new MobStringPickerScreen.Entry(id, entityLabel(id),
+                        entityCategory(id), MobEditorUiLogic.entityIcon(id, "NORMAL")))
+                .toList();
+        minecraft.setScreen(new MobStringPickerScreen(this, "EntityTypeを選択",
+                entries, draft.entityType(), this::entityTypeChanged));
+    }
+
+    private void entityTypeChanged(String value) {
+        collectCurrentTab(false);
+        if (draft == null || value.equalsIgnoreCase(draft.entityType())) return;
+        MobEditorData.Mob changed = copyBasic(draft, draft.displayName(),
+                value.toUpperCase(Locale.ROOT), draft.category(), draft.enabled(),
+                draft.level(), draft.nameplate(), draft.tags());
+        MobEditorData.Mob normalized = normalizeAppearance(changed, value);
+        Runnable apply = () -> {
+            draft = normalized;
+            dirty = true;
+            refreshWidgets();
+        };
+        if (!changed.appearance().equals(normalized.appearance())) {
+            confirm("EntityType変更を適用しますか？",
+                    "互換性のない年齢・Variant・装備は安全な初期値へ変更されます。",
+                    "変更", apply);
+        } else {
+            apply.run();
+        }
+    }
+
+    private void openGlowPicker(java.util.function.Consumer<String> consumer) {
+        List<MobStringPickerScreen.Entry> entries = GLOW_COLORS.stream()
+                .map(color -> new MobStringPickerScreen.Entry(color, glowLabel(color),
+                        "Minecraftカラー", ProjectSIcon.COLOR))
+                .toList();
+        minecraft.setScreen(new MobStringPickerScreen(this, "発光色を選択", entries,
+                draft.appearance().glowingColor(), consumer));
+    }
+
+    private void updateAppearanceGlowColor(String value) {
+        collectCurrentTab(false);
+        MobEditorData.Appearance current = draft.appearance();
+        draft = withAppearance(draft, new MobEditorData.Appearance(
+                current.scale(), current.age(), current.glowing(), value,
+                current.variants(), current.equipment()));
+        dirty = true;
+        refreshWidgets();
+    }
+
+    private void variantControl(String key, String current, int x, int y, int width) {
+        List<String> options = MobEditorVariantLogic.options(draft.entityType(), key);
+        if (key.equals("size") || options.isEmpty()) {
+            field("variant_" + key, variantLabel(key), current, x, y, width);
+            return;
+        }
+        List<String> values = options.contains(current)
+                ? options : java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(current), options.stream()).toList();
+        addPropertyButton(x, y + 14, width,
+                variantLabel(key) + ": " + variantValueLabel(key, current),
+                () -> openVariantPicker(key, current, values));
+    }
+
+    private void openVariantPicker(String key, String current, List<String> values) {
+        boolean dyePalette = key.equals("collar-color")
+                || key.equals("color") && draft.entityType().equalsIgnoreCase("SHEEP");
+        List<MobStringPickerScreen.Entry> entries = values.stream()
+                .map(value -> new MobStringPickerScreen.Entry(value,
+                        variantValueLabel(key, value),
+                        dyePalette ? "Minecraftカラー" : variantLabel(key),
+                        key.equals("profession") || key.equals("villager-type")
+                                ? ProjectSIcon.VILLAGER : ProjectSIcon.FILTER))
+                .toList();
+        minecraft.setScreen(new MobStringPickerScreen(this,
+                variantLabel(key) + "を選択", entries, current,
+                value -> updateVariant(key, value)));
+    }
+
+    private void updateVariant(String key, String value) {
+        collectCurrentTab(false);
+        Map<String, String> variants = new HashMap<>(draft.appearance().variants());
+        variants.put(key, value);
+        MobEditorData.Appearance current = draft.appearance();
+        draft = withAppearance(draft, new MobEditorData.Appearance(
+                current.scale(), current.age(), current.glowing(), current.glowingColor(),
+                variants, current.equipment()));
+        dirty = true;
+        refreshWidgets();
+    }
+
+    private void cycleSelectedEquipmentSource() {
+        collectCurrentTab(false);
+        MobEditorData.Equipment current = draft.appearance().equipment()
+                .get(selectedEquipmentSlot);
+        MobEditorData.EquipmentSource source = next(current.source());
+        equipmentSources.put(selectedEquipmentSlot, source);
+        EnumMap<MobEditorData.Slot, MobEditorData.Equipment> equipment =
+                new EnumMap<>(draft.appearance().equipment());
+        equipment.put(selectedEquipmentSlot, source == MobEditorData.EquipmentSource.NONE
+                ? MobEditorData.Equipment.empty() : new MobEditorData.Equipment(
+                        source, current.referenceId(), current.material(),
+                        source == MobEditorData.EquipmentSource.VANILLA_ITEM
+                                ? current.color() : "", current.glint(),
+                        current.visible(), true));
+        draft = withAppearance(draft, new MobEditorData.Appearance(
+                draft.appearance().scale(), draft.appearance().age(),
+                draft.appearance().glowing(), draft.appearance().glowingColor(),
+                draft.appearance().variants(), equipment));
+        dirty = true;
+        refreshWidgets();
+    }
+
+    private void openEquipmentPicker() {
+        MobEditorData.Equipment equipment = draft.appearance().equipment()
+                .get(selectedEquipmentSlot);
+        if (equipment.source() == MobEditorData.EquipmentSource.CUSTOM_HEAD) {
+            headBrowserTab = "ローカル";
+            localError = "下のHead BrowserからローカルHeadを選択してください";
+            refreshWidgets();
+            return;
+        }
+        List<MobStringPickerScreen.Entry> entries;
+        if (equipment.source() == MobEditorData.EquipmentSource.PROJECTS_ITEM) {
+            entries = List.of(
+                    new MobStringPickerScreen.Entry("starter_sword", "スターターソード",
+                            "武器", ProjectSIcon.SWORD, true, "",
+                            MobItemStackCache.get("IRON_SWORD")),
+                    new MobStringPickerScreen.Entry("painter_staff", "ペインターの杖",
+                            "武器", ProjectSIcon.MAGIC, true, "",
+                            MobItemStackCache.get("BLAZE_ROD")),
+                    new MobStringPickerScreen.Entry("starter_bow", "スターターボウ",
+                            "武器", ProjectSIcon.BOW, true, "",
+                            MobItemStackCache.get("BOW")));
+        } else {
+            entries = vanillaMaterials().stream().map(material -> {
+                boolean fits = MobEditorPickerLogic.materialFits(
+                        material, selectedEquipmentSlot.name());
+                return new MobStringPickerScreen.Entry(material,
+                        material.replace('_', ' '),
+                        MobEditorPickerLogic.materialCategory(material),
+                        slotIcon(selectedEquipmentSlot), fits,
+                        fits ? "" : shortSlot(selectedEquipmentSlot)
+                                + "へ装備できないアイテムです",
+                        MobItemStackCache.get(material));
+            }).toList();
+        }
+        String selected = equipment.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
+                ? equipment.material() : equipment.referenceId();
+        minecraft.setScreen(new MobStringPickerScreen(this,
+                equipment.source() == MobEditorData.EquipmentSource.PROJECTS_ITEM
+                        ? "ProjectS Itemを選択" : "Vanilla Itemを選択",
+                entries, selected, this::setSelectedEquipmentItem));
+    }
+
+    private void setSelectedEquipmentItem(String value) {
+        collectCurrentTab(false);
+        MobEditorData.Equipment current = draft.appearance().equipment()
+                .get(selectedEquipmentSlot);
+        EnumMap<MobEditorData.Slot, MobEditorData.Equipment> equipment =
+                new EnumMap<>(draft.appearance().equipment());
+        boolean vanilla = current.source() == MobEditorData.EquipmentSource.VANILLA_ITEM;
+        equipment.put(selectedEquipmentSlot, new MobEditorData.Equipment(
+                current.source(), vanilla ? "" : value, vanilla ? value : "",
+                isLeatherArmor(value) ? current.color() : "", current.glint(),
+                current.visible(), true));
+        MobEditorData.Appearance appearance = draft.appearance();
+        draft = withAppearance(draft, new MobEditorData.Appearance(
+                appearance.scale(), appearance.age(), appearance.glowing(),
+                appearance.glowingColor(), appearance.variants(), equipment));
+        dirty = true;
+        refreshWidgets();
+    }
+
+    private void openLeatherColorPicker() {
+        MobEditorData.Equipment selected = draft.appearance().equipment()
+                .get(selectedEquipmentSlot);
+        String item = selected.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
+                ? selected.material() : selected.referenceId();
+        if (!isLeatherArmor(item)) {
+            localError = "革防具を選択したときだけ色を変更できます";
+            return;
+        }
+        String initial = selected.color().matches("#[0-9a-fA-F]{6}")
+                ? selected.color() : "#A06540";
+        MobEditorData.Mob before = draft;
+        boolean dirtyBefore = dirty;
+        minecraft.setScreen(new LeatherColorPickerScreen(this, initial,
+                color -> updateSelectedEquipment(color, selected.glint(), selected.visible()),
+                () -> {
+                    draft = before;
+                    dirty = dirtyBefore;
+                    preview.update(draft, MobEditorClientState.state().headDetail());
+                }));
+    }
+
+    private void clearSelectedEquipment() {
+        collectCurrentTab(false);
+        EnumMap<MobEditorData.Slot, MobEditorData.Equipment> equipment =
+                new EnumMap<>(draft.appearance().equipment());
+        equipment.put(selectedEquipmentSlot, MobEditorData.Equipment.empty());
+        equipmentSources.put(selectedEquipmentSlot, MobEditorData.EquipmentSource.NONE);
+        MobEditorData.Appearance current = draft.appearance();
+        draft = withAppearance(draft, new MobEditorData.Appearance(
+                current.scale(), current.age(), current.glowing(), current.glowingColor(),
+                current.variants(), equipment));
+        dirty = true;
+        refreshWidgets();
+    }
+
+    private static List<String> vanillaMaterials() {
+        return List.of("LEATHER_HELMET", "LEATHER_CHESTPLATE", "LEATHER_LEGGINGS",
+                "LEATHER_BOOTS", "CHAINMAIL_HELMET", "CHAINMAIL_CHESTPLATE",
+                "CHAINMAIL_LEGGINGS", "CHAINMAIL_BOOTS", "IRON_HELMET",
+                "IRON_CHESTPLATE", "IRON_LEGGINGS", "IRON_BOOTS", "GOLDEN_HELMET",
+                "GOLDEN_CHESTPLATE", "GOLDEN_LEGGINGS", "GOLDEN_BOOTS",
+                "DIAMOND_HELMET", "DIAMOND_CHESTPLATE", "DIAMOND_LEGGINGS",
+                "DIAMOND_BOOTS", "NETHERITE_HELMET", "NETHERITE_CHESTPLATE",
+                "NETHERITE_LEGGINGS", "NETHERITE_BOOTS", "ELYTRA", "SHIELD",
+                "WOODEN_SWORD", "STONE_SWORD", "IRON_SWORD", "GOLDEN_SWORD",
+                "DIAMOND_SWORD", "NETHERITE_SWORD", "BOW", "CROSSBOW", "TRIDENT",
+                "IRON_AXE", "DIAMOND_AXE", "NETHERITE_AXE", "CARVED_PUMPKIN",
+                "PLAYER_HEAD", "SKELETON_SKULL", "WITHER_SKELETON_SKULL");
+    }
+
+    private static boolean isLeatherArmor(String value) {
+        if (value == null) return false;
+        String upper = value.toUpperCase(Locale.ROOT);
+        return upper.startsWith("LEATHER_") && (upper.endsWith("HELMET")
+                || upper.endsWith("CHESTPLATE") || upper.endsWith("LEGGINGS")
+                || upper.endsWith("BOOTS"));
+    }
+
+    private List<MobEditorStatePayload.HeadSummary> sortedHeads() {
+        return MobEditorClientState.state().heads().stream()
+                .filter(value -> !headBrowserTab.equals("お気に入り") || value.favorite())
+                .filter(value -> !headBrowserTab.equals("最近使用")
+                        || recentHeads.contains(value.id()))
+                .filter(value -> !headBrowserTab.equals("外部カタログ"))
+                .filter(value -> MobEditorUiLogic.headMatches(value.id(), value.displayName(),
+                        value.tags(), value.favorite(), headQuery,
+                        headBrowserTab.equals("お気に入り")))
+                .sorted(java.util.Comparator.comparing(
+                        (MobEditorStatePayload.HeadSummary value) ->
+                                recentHeads.contains(value.id())).reversed())
+                .limit(4).toList();
+    }
+
+    private void addExternalCatalogDisabledCard(int x, int y, int width) {
+        ProjectSButton status = addPropertyButton(x, y, width,
+                "外部カタログは未設定です", () -> { });
+        status.active = false;
+        status.setTooltip(Tooltip.create(Component.literal(
+                MobEditorPickerLogic.externalCatalogDisabledReason())));
+    }
+
+    private static ProjectSIcon slotIcon(MobEditorData.Slot slot) {
+        return switch (slot) {
+            case HEAD -> ProjectSIcon.HEAD;
+            case CHEST, LEGS, FEET -> ProjectSIcon.ARMOR;
+            case MAIN_HAND -> ProjectSIcon.SWORD;
+            case OFF_HAND -> ProjectSIcon.SHIELD;
+        };
+    }
+
+    private void addHeadTabButtons(int x, int y, int width) {
+        List<String> tabs = List.of("ローカル", "外部", "お気に入り", "最近");
+        List<String> values = List.of("ローカル", "外部カタログ", "お気に入り", "最近使用");
+        int gap = 4;
+        int buttonWidth = Math.max(42, (width - gap * 3) / 4);
+        for (int index = 0; index < tabs.size(); index++) {
+            String value = values.get(index);
+            ProjectSButton button = addPropertyButton(x + index * (buttonWidth + gap), y,
+                    buttonWidth, tabs.get(index), () -> {
+                        headBrowserTab = value;
+                        localError = "";
+                        refreshWidgets();
+                    });
+            button.selected(value.equals(headBrowserTab));
+        }
+    }
+
+    private static String entityCategory(String id) {
+        return switch (id) {
+            case "WOLF", "CAT", "HORSE", "SHEEP", "COW", "PIG", "CHICKEN",
+                    "RABBIT", "FOX", "GOAT", "CAMEL", "ARMADILLO" -> "動物";
+            case "VILLAGER", "WANDERING_TRADER", "IRON_GOLEM", "SNOW_GOLEM",
+                    "ALLAY" -> "友好";
+            case "WITHER", "ENDER_DRAGON", "WARDEN" -> "ボス";
+            default -> "敵対";
+        };
+    }
+
+    private static String entityLabel(String id) {
+        return switch (id) {
+            case "ZOMBIE" -> "ゾンビ";
+            case "SKELETON" -> "スケルトン";
+            case "CREEPER" -> "クリーパー";
+            case "VILLAGER" -> "村人";
+            case "WOLF" -> "オオカミ";
+            case "CAT" -> "ネコ";
+            case "HORSE" -> "ウマ";
+            case "SHEEP" -> "ヒツジ";
+            default -> id.replace('_', ' ');
+        };
+    }
+
+    private static String glowLabel(String color) {
+        return switch (color) {
+            case "WHITE" -> "白";
+            case "YELLOW" -> "黄";
+            case "GOLD" -> "金";
+            case "RED" -> "赤";
+            case "BLUE" -> "青";
+            case "AQUA" -> "水色";
+            case "GREEN" -> "緑";
+            case "BLACK" -> "黒";
+            default -> color;
+        };
+    }
+
+    private static String variantLabel(String key) {
+        return switch (key) {
+            case "size" -> "サイズ";
+            case "color" -> "色";
+            case "sheared" -> "毛刈り済み";
+            case "variant" -> "種類";
+            case "collar-color" -> "首輪の色";
+            case "angry" -> "怒り状態";
+            case "profession" -> "職業";
+            case "villager-type" -> "村人タイプ";
+            default -> key;
+        };
+    }
+
+    private static String variantValueLabel(String key, String value) {
+        if (value.equals("true")) return "オン";
+        if (value.equals("false")) return "オフ";
+        return value.replace('_', ' ');
     }
 
     private void buildTest(int x, int y) {
@@ -606,14 +1009,27 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private void buildBottom(int x) {
         MobEditorLayout.Bounds bounds = layout.actionBar();
-        addRenderableWidget(MobEditorActionBar.action(bounds, 0, 4,
-                "元に戻す", ProjectSButton.Kind.GHOST, this::undo));
-        addRenderableWidget(MobEditorActionBar.action(bounds, 1, 4,
-                "検証", ProjectSButton.Kind.SECONDARY, this::validateDraft));
-        addRenderableWidget(MobEditorActionBar.action(bounds, 2, 4,
-                "保存", ProjectSButton.Kind.PRIMARY, this::saveDraft));
-        addRenderableWidget(MobEditorActionBar.action(bounds, 3, 4,
-                "適用", ProjectSButton.Kind.PRIMARY, this::applyDefinition));
+        ProjectSButton undo = MobEditorActionBar.action(bounds, 0, 4,
+                "元に戻す", ProjectSButton.Kind.GHOST, this::undo);
+        ProjectSButton validate = MobEditorActionBar.action(bounds, 1, 4,
+                "検証", ProjectSButton.Kind.SECONDARY, this::validateDraft);
+        ProjectSButton save = MobEditorActionBar.action(bounds, 2, 4,
+                "保存", ProjectSButton.Kind.PRIMARY, this::saveDraft);
+        ProjectSButton apply = MobEditorActionBar.action(bounds, 3, 4,
+                "適用", ProjectSButton.Kind.PRIMARY, this::applyDefinition);
+        undo.active = original != null;
+        validate.active = draft != null && !MobEditorClientState.communicating();
+        validate.loading(MobEditorClientState.communicating());
+        save.active = draft != null && !MobEditorClientState.communicating()
+                && !MobEditorClientState.state().revisionConflict();
+        save.loading(MobEditorClientState.communicating());
+        apply.active = draft != null && !dirty && !MobEditorClientState.communicating()
+                && !MobEditorClientState.state().revisionConflict();
+        apply.loading(MobEditorClientState.communicating());
+        addRenderableWidget(undo);
+        addRenderableWidget(validate);
+        addRenderableWidget(save);
+        addRenderableWidget(apply);
     }
 
     private void buildAppearanceCompact() {
@@ -638,48 +1054,69 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                     !appearance.glowing(), appearance.glowingColor(), appearance.variants(), appearance.equipment()));
             dirty = true; rebuild();
         });
-        addPropertyButton(color.x(), color.y(), color.width(), appearance.glowingColor(), () -> {
-            collectCurrentTab();
-            MobEditorData.Appearance current = draft.appearance();
-            draft = withAppearance(draft, new MobEditorData.Appearance(current.scale(), current.age(), current.glowing(),
-                    nextGlowColor(current.glowingColor()), current.variants(), current.equipment()));
-            dirty = true; rebuild();
-        });
+        addPropertyButton(color.x(), color.y(), color.width(), appearance.glowingColor(),
+                () -> openGlowPicker(this::updateAppearanceGlowColor));
         int row = 2;
         for (String key : variantKeys(draft.entityType())) {
             MobEditorLayout.Bounds bounds = MobPropertyPanel.compactRow(panel, row++);
-            field("variant_" + key, key, appearance.variants().getOrDefault(key,
+            variantControl(key, appearance.variants().getOrDefault(key,
                     defaultVariant(draft.entityType(), key)), bounds.x(), bounds.y(), bounds.width());
         }
         boolean equipmentSupported = supportsEquipment(draft.entityType());
         for (MobEditorData.Slot slot : MobEditorData.Slot.values()) {
             MobEditorData.Equipment entry = appearance.equipment().get(slot);
             equipmentSources.put(slot, entry.source());
-            MobEditorLayout.Bounds source = MobPropertyPanel.compactColumn(panel, row, 0, 2);
-            MobEditorLayout.Bounds value = MobPropertyPanel.compactColumn(panel, row, 1, 2);
-            ProjectSButton sourceButton = addPropertyButton(source.x(), source.y(), source.width(),
-                    (slot == selectedEquipmentSlot ? "▶" : "") + shortSlot(slot) + ":" + entry.source(), () -> {
-                collectCurrentTab(); selectedEquipmentSlot = slot;
-                equipmentSources.put(slot, next(equipmentSources.get(slot))); dirty = true; rebuild();
-            });
-            sourceButton.active = equipmentSupported;
-            String equipmentValue = entry.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
-                    ? entry.material() : entry.referenceId();
-            field("eq_" + slot.name(), "", equipmentValue, value.x(), value.y(), value.width())
-                    .setEditable(equipmentSupported && entry.source() != MobEditorData.EquipmentSource.NONE);
-            row++;
+            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactRow(panel, row++);
+            ProjectSButton slotButton = addPropertyButton(bounds.x(), bounds.y(), bounds.width(),
+                    (slot == selectedEquipmentSlot ? "▶" : "") + shortSlot(slot) + ": "
+                            + entry.source(), () -> {
+                        collectCurrentTab(false);
+                        selectedEquipmentSlot = slot;
+                        refreshWidgets();
+                    });
+            slotButton.active = equipmentSupported;
         }
         MobEditorData.Equipment selected = appearance.equipment().get(selectedEquipmentSlot);
-        for (int column = 0; column < 3; column++) {
-            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(panel, row, column, 3);
-            if (column == 0) addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "選択:" + shortSlot(selectedEquipmentSlot), () -> { selectedEquipmentSlot = next(selectedEquipmentSlot); rebuild(); });
-            if (column == 1) { ProjectSButton button = addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "Glint:" + (selected.glint() ? "ON" : "OFF"), () -> toggleSelectedEquipment(true)); button.active = equipmentSupported; }
-            if (column == 2) { ProjectSButton button = addPropertyButton(bounds.x(), bounds.y(), bounds.width(), "表示:" + (selected.visible() ? "ON" : "OFF"), () -> toggleSelectedEquipment(false)); button.active = equipmentSupported; }
-        }
-        MobEditorLayout.Bounds equipmentColor = MobPropertyPanel.compactRow(panel, ++row);
-        field("eq_color", "革防具色 #RRGGBB", selected.color(), equipmentColor.x(), equipmentColor.y(), equipmentColor.width()).setEditable(equipmentSupported);
+        MobEditorLayout.Bounds sourceBounds = MobPropertyPanel.compactRow(panel, row++);
+        ProjectSButton source = addPropertyButton(sourceBounds.x(), sourceBounds.y(),
+                sourceBounds.width(), shortSlot(selectedEquipmentSlot) + " / " + selected.source(),
+                this::cycleSelectedEquipmentSource);
+        source.active = equipmentSupported;
+        MobEditorLayout.Bounds itemBounds = MobPropertyPanel.compactRow(panel, row++);
+        String selectedValue = selected.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
+                ? selected.material() : selected.referenceId();
+        EditBox itemField = field("eq_" + selectedEquipmentSlot.name(), "選択アイテム",
+                selectedValue, itemBounds.x(), itemBounds.y(), itemBounds.width());
+        itemField.setEditable(false);
+        MobEditorLayout.Bounds chooseBounds = MobPropertyPanel.compactRow(panel, row++);
+        ProjectSButton choose = addPropertyButton(chooseBounds.x(), chooseBounds.y(),
+                chooseBounds.width(), "アイテムを選択", this::openEquipmentPicker);
+        choose.active = equipmentSupported
+                && selected.source() != MobEditorData.EquipmentSource.NONE;
+        MobEditorLayout.Bounds glintBounds = MobPropertyPanel.compactColumn(panel, row, 0, 2);
+        MobEditorLayout.Bounds visibleBounds = MobPropertyPanel.compactColumn(panel, row++, 1, 2);
+        ProjectSButton glint = addPropertyButton(glintBounds.x(), glintBounds.y(),
+                glintBounds.width(), "Glint:" + (selected.glint() ? "ON" : "OFF"),
+                () -> toggleSelectedEquipment(true));
+        ProjectSButton visible = addPropertyButton(visibleBounds.x(), visibleBounds.y(),
+                visibleBounds.width(), "表示:" + (selected.visible() ? "ON" : "OFF"),
+                () -> toggleSelectedEquipment(false));
+        glint.active = equipmentSupported;
+        visible.active = equipmentSupported;
+        MobEditorLayout.Bounds equipmentColor = MobPropertyPanel.compactRow(panel, row++);
+        field("eq_color", "革防具色 #RRGGBB", selected.color(), equipmentColor.x(),
+                equipmentColor.y(), equipmentColor.width()).setEditable(false);
+        MobEditorLayout.Bounds colorBounds = MobPropertyPanel.compactRow(panel, row++);
+        ProjectSButton colorPicker = addPropertyButton(colorBounds.x(), colorBounds.y(),
+                colorBounds.width(), "色を選択", this::openLeatherColorPicker);
+        colorPicker.active = equipmentSupported && isLeatherArmor(selectedValue);
+        MobEditorLayout.Bounds clearBounds = MobPropertyPanel.compactRow(panel, row++);
+        ProjectSButton clear = addPropertyButton(clearBounds.x(), clearBounds.y(),
+                clearBounds.width(), "選択中スロットをクリア", this::clearSelectedEquipment);
+        clear.active = equipmentSupported;
         MobEditorLayout.Bounds searchBounds = MobPropertyPanel.compactRow(panel, ++row);
         EditBox headSearch = field("head_search", "ヘッド検索/タグ", headQuery, searchBounds.x(), searchBounds.y(), searchBounds.width());
+        headSearch.setMaxLength(64);
         headSearch.setResponder(value -> headQuery = value);
         row++;
         for (int column = 0; column < 3; column++) {
@@ -693,14 +1130,24 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         addPropertyButton(importBounds.x(), importBounds.y(), importBounds.width(), "ヘッド登録", () -> minecraft.setScreen(new HeadImportScreen(this)));
         ProjectSButton favorite = addPropertyButton(favoriteBounds.x(), favoriteBounds.y(), favoriteBounds.width(), "お気に入り切替", () -> MobEditorClientState.updateHeadFavorite(MobEditorClientState.state().headDetail()));
         favorite.active = MobEditorClientState.state().headDetail() != null;
+        addHeadTabButtons(panel.x(), panel.y() + (++row) * 38, panel.width());
         int headRow = ++row;
         int column = 0;
-        for (var head : MobEditorClientState.state().heads().stream().limit(4).toList()) {
-            MobEditorLayout.Bounds bounds = MobPropertyPanel.compactColumn(panel, headRow + column / 2, column % 2, 2);
-            addPropertyButton(bounds.x(), bounds.y(), bounds.width(), head.favorite() ? "★" + head.displayName() : head.displayName(), () -> {
-                setHeadReference(head.id()); MobEditorClientState.requestHead(head.id(), headQuery, headPage);
-            });
-            column++;
+        String selectedHeadId = appearance.equipment().get(MobEditorData.Slot.HEAD)
+                .referenceId();
+        for (var head : sortedHeads()) {
+            int cardRow = headRow + column++;
+            int cardY = panel.y() + cardRow * 46;
+            MobHeadCard card = new MobHeadCard(panel.x(), cardY, panel.width(), head,
+                    head.id().equals(selectedHeadId), () -> {
+                        setHeadReference(head.id());
+                        MobEditorClientState.requestHead(head.id(), headQuery, headPage);
+                    });
+            addPropertyWidget(card);
+        }
+        if (headBrowserTab.equals("外部カタログ")) {
+            addExternalCatalogDisabledCard(panel.x(), panel.y() + (headRow + column) * 46,
+                    panel.width());
         }
     }
 
@@ -733,24 +1180,46 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private void buildPreviewButtons() {
-        previewButton(0, "リセット", this::resetPreview);
-        previewButton(1, "視点", () -> {
+        previewIconButton(0, ProjectSIcon.RESET, () -> "プレビューをリセット",
+                this::resetPreview, () -> false);
+        previewIconButton(1, ProjectSIcon.CAMERA, () -> "視点: " + view, () -> {
             view = next(view);
             applyView();
-        });
-        previewButton(2, "背景", () -> darkBackground = !darkBackground);
-        previewButton(3, "Grid", () -> grid = !grid);
-        previewButton(4, "Hit", () -> hitbox = !hitbox);
-        previewButton(5, "Eye", () -> eyeLine = !eyeLine);
-        previewButton(6, "Anim", () -> {
+        }, () -> view != View.FREE);
+        previewIconButton(2, ProjectSIcon.BACKGROUND,
+                () -> "背景: " + (darkBackground ? "Dark" : "Light"),
+                () -> darkBackground = !darkBackground, () -> darkBackground);
+        previewIconButton(3, ProjectSIcon.GRID,
+                () -> "グリッド: " + (grid ? "ON" : "OFF"),
+                () -> grid = !grid, () -> grid);
+        previewIconButton(4, ProjectSIcon.HITBOX,
+                () -> "当たり判定: " + (hitbox ? "ON" : "OFF"),
+                () -> hitbox = !hitbox, () -> hitbox);
+        previewIconButton(5, ProjectSIcon.EYE_LINE,
+                () -> "視線: " + (eyeLine ? "ON" : "OFF"),
+                () -> eyeLine = !eyeLine, () -> eyeLine);
+        previewIconButton(6, ProjectSIcon.PLAY, () -> "アニメーション: " + animation, () -> {
             animation = next(animation);
             preview.setAnimation(animation);
-        });
+        }, () -> animation != MobPreviewEntity.Animation.IDLE);
     }
 
-    private void previewButton(int index, String label, Runnable action) {
+    private void previewIconButton(int index, ProjectSIcon icon,
+                                   java.util.function.Supplier<String> label,
+                                   Runnable action,
+                                   java.util.function.BooleanSupplier selected) {
         MobEditorLayout.Bounds bounds = MobPreviewPanel.controlBounds(layout.preview(), index, 7);
-        button(bounds.x(), bounds.y(), label, action, bounds.width());
+        ProjectSIconButton[] holder = new ProjectSIconButton[1];
+        holder[0] = new ProjectSIconButton(
+                bounds.x(), bounds.y(), bounds.width(), bounds.height(), icon,
+                Component.literal(label.get()), ProjectSButton.Kind.GHOST, () -> {
+                    action.run();
+                    holder[0].selected(selected.getAsBoolean());
+                    holder[0].setMessage(Component.literal(label.get()));
+                    holder[0].setTooltip(Tooltip.create(Component.literal(label.get())));
+                });
+        holder[0].selected(selected.getAsBoolean());
+        addRenderableWidget(holder[0]);
     }
 
     private EditBox field(
@@ -832,11 +1301,18 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             switch (tab) {
                 case BASIC -> {
                     String entityType = text("entity").toUpperCase(Locale.ROOT);
+                    String display = text("display");
+                    List<String> tags = Arrays.stream(text("tags").split(","))
+                            .map(String::trim).filter(value -> !value.isBlank()).toList();
+                    if (!MobEditorInputLogic.utf8Within(display, 128)
+                            || !MobEditorInputLogic.utf8Within(entityType, 64)
+                            || !validTags(tags)) {
+                        throw new IllegalArgumentException("Mob text input exceeds its bounds");
+                    }
                     draft = copyBasic(
-                            draft, text("display"), entityType,
+                            draft, display, entityType,
                             draft.category(), draft.enabled(), integer("level"),
-                            draft.nameplate(), Arrays.stream(text("tags").split(","))
-                            .map(String::trim).filter(value -> !value.isBlank()).toList());
+                            draft.nameplate(), tags);
                     if (finalizeEntityType) {
                         draft = normalizeAppearance(draft, entityType);
                     }
@@ -866,8 +1342,12 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                             new EnumMap<>(MobEditorData.Slot.class);
                     for (MobEditorData.Slot slot : MobEditorData.Slot.values()) {
                         MobEditorData.Equipment old = draft.appearance().equipment().get(slot);
-                        MobEditorData.EquipmentSource source = equipmentSources.get(slot);
-                        String value = text("eq_" + slot.name());
+                        MobEditorData.EquipmentSource source = equipmentSources.getOrDefault(
+                                slot, old.source());
+                        String value = fields.containsKey("eq_" + slot.name())
+                                ? text("eq_" + slot.name())
+                                : source == MobEditorData.EquipmentSource.VANILLA_ITEM
+                                ? old.material() : old.referenceId();
                         String color = slot == selectedEquipmentSlot
                                 ? text("eq_color") : old.color();
                         if (source == MobEditorData.EquipmentSource.NONE
@@ -888,7 +1368,10 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                     MobEditorData.Appearance old = draft.appearance();
                     Map<String, String> variants = new HashMap<>();
                     for (String key : variantKeys(draft.entityType())) {
-                        variants.put(key, text("variant_" + key));
+                        variants.put(key, fields.containsKey("variant_" + key)
+                                ? text("variant_" + key)
+                                : old.variants().getOrDefault(key,
+                                defaultVariant(draft.entityType(), key)));
                     }
                     draft = withAppearance(draft, new MobEditorData.Appearance(
                             decimal("scale"), old.age(), old.glowing(),
@@ -900,6 +1383,8 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             preview.update(draft, MobEditorClientState.state().headDetail());
         } catch (NumberFormatException ignored) {
             localError = "有限な数値または整数を入力してください";
+        } catch (IllegalArgumentException ignored) {
+            localError = "入力がUTF-8バイト上限または件数上限を超えています";
         }
     }
 
@@ -907,51 +1392,77 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         var state = MobEditorClientState.state();
         syncedStateRevision = MobEditorClientState.localRevision();
         var v2 = MobEditorClientState.v2State();
-        if (v2 == null) {
+        boolean preserveConflictDraft = MobEditorConflictLogic.preserveDirtyWorkingDraft(
+                dirty, draft, state.revisionConflict());
+        if (v2 == null && !preserveConflictDraft) {
             // A v1 response has no v2 assignment authority.
             abilities.replace(List.of(), List.of());
             abilityUndoBaseline.clear();
             assignedAbilityOffset = 0;
             availableAbilityOffset = 0;
         }
+        boolean duplicateWasPending = duplicateCorrelation.pending();
         boolean duplicateSucceeded = duplicateCorrelation.consumeSuccessful(state.supported(),
-                state.permitted(), state.success(), state.revisionConflict(), state.message(),
+                state.permitted(), state.success(), state.revisionConflict(),
+                MobEditorClientState.communicating() ? "中..." : "",
                 state.detail() == null ? null : state.detail().id());
         if (!duplicateCorrelation.pending() && !duplicateSucceeded) duplicateTemplate = null;
-        if (state.detail() != null) {
+        boolean saveFinished = pendingSave && !MobEditorClientState.communicating();
+        boolean saveAccepted = saveFinished && state.success()
+                && !state.revisionConflict() && state.detail() != null;
+        if (saveFinished) pendingSave = false;
+        boolean reloadWasPending = pendingReload;
+        boolean reloadFinished = reloadWasPending && !MobEditorClientState.communicating();
+        boolean reloadAccepted = reloadFinished && state.success()
+                && !state.revisionConflict() && state.detail() != null;
+        if (reloadFinished) pendingReload = false;
+        if (reloadAccepted) {
+            draft = null;
+            original = null;
+            dirty = false;
+        }
+        boolean ignoreIncomingDetail = duplicateWasPending && !duplicateSucceeded
+                || reloadWasPending && !reloadAccepted;
+        if (state.detail() != null && !ignoreIncomingDetail) {
             if (duplicateSucceeded && duplicateTemplate != null) {
                 draft = copyId(duplicateTemplate, state.detail().id());
                 original = state.detail();
-                abilityUndoBaseline.capture(v2, original.id());
                 dirty = true;
                 duplicateTemplate = null;
+                if (v2 == null) {
+                    abilities.replace(List.of(), List.of());
+                    abilityUndoBaseline.clear();
+                } else {
+                    replaceAuthoritativeAbilities();
+                }
                 MobEditorClientState.validate(draft);
+            } else if (saveAccepted) {
+                draft = state.detail();
+                original = draft;
+                dirty = false;
+                replaceAuthoritativeAbilities();
             } else {
                 MobEditorData.Mob incoming = state.detail();
                 boolean selectionChanged = draft == null
                         || !draft.id().equals(incoming.id());
-                boolean sameDraft = draft != null
-                        && draft.id().equals(incoming.id())
-                        && draft.revision() == incoming.revision();
-                boolean preserveDirtyDraft = dirty && sameDraft && !state.revisionConflict();
+                boolean sameDraft = draft != null && draft.id().equals(incoming.id());
+                boolean preserveDirtyDraft = preserveConflictDraft
+                        || dirty && sameDraft && !state.revisionConflict();
                 if (!preserveDirtyDraft) {
                     draft = incoming;
-                    if (state.message().contains("保存しました") || original == null
+                    if (original == null
                             || !original.id().equals(draft.id())
                             || original.revision() != draft.revision()) {
                         original = draft;
                         dirty = false;
-                        replaceAuthoritativeAbilities(v2);
+                        replaceAuthoritativeAbilities();
                     } else if (v2 != null && v2.detail() != null) {
-                        replaceAuthoritativeAbilities(v2);
+                        replaceAuthoritativeAbilities();
                     }
                     if (appliedEntityType.isBlank() || selectionChanged) {
                         appliedEntityType = draft.entityType();
                     }
                 }
-            }
-            if (state.success() && state.message().contains("体へ適用しました")) {
-                appliedEntityType = draft.entityType();
             }
             equipmentSources.clear();
             equipmentSources.putAll(draft.appearance().equipment().entrySet().stream()
@@ -962,12 +1473,22 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             preview.update(draft, state.headDetail());
             requestDraftHeadDetail(state.headDetail());
         }
+        if (pendingApply && !MobEditorClientState.communicating()) {
+            if (state.success() && !state.revisionConflict() && draft != null) {
+                appliedEntityType = draft.entityType();
+            }
+            pendingApply = false;
+        }
+        if (state.revisionConflict()) localError = CONFLICT_ERROR;
+        else if (CONFLICT_ERROR.equals(localError)) localError = "";
     }
 
-    private void replaceAuthoritativeAbilities(MobEditorV2StatePayload.State v2) {
-        if (v2 == null || !v2.supported() || !v2.permitted() || v2.detail() == null || draft == null
-                || !v2.detail().base().id().equals(draft.id())) return;
-        abilityUndoBaseline.capture(v2, draft.id());
+    private void replaceAuthoritativeAbilities() {
+        MobEditorV2StatePayload.State authority = MobEditorClientState
+                .authoritativeV2State();
+        if (authority == null || draft == null || authority.detail() == null
+                || !authority.detail().base().id().equals(draft.id())) return;
+        abilityUndoBaseline.capture(authority, draft.id());
         abilities.replace(abilityUndoBaseline.assigned(), abilityUndoBaseline.catalog());
         assignedAbilityOffset = 0;
         availableAbilityOffset = 0;
@@ -998,6 +1519,9 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             localError = "通信中です。応答後にもう一度操作してください";
             return;
         }
+        pendingSave = false;
+        pendingReload = false;
+        localError = "";
         draft = null;
         original = null;
         dirty = false;
@@ -1006,8 +1530,16 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     private void duplicate() {
         if (draft == null) return;
         collectCurrentTab();
+        if (!localError.isBlank()) return;
+        pendingSave = false;
+        pendingReload = false;
         duplicateTemplate = draft;
         String duplicateId = draft.id() + "_copy";
+        if (!MobEditorInputLogic.utf8Within(duplicateId, 64)) {
+            clearPendingDuplicate();
+            localError = "複製後のIDがUTF-8バイト上限を超えています";
+            return;
+        }
         duplicateCorrelation.begin(duplicateId);
         if (!MobEditorClientState.create(duplicateId)) {
             clearPendingDuplicate();
@@ -1017,6 +1549,12 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private void createDraft(String id) {
         clearPendingDuplicate();
+        pendingSave = false;
+        pendingReload = false;
+        if (!MobEditorInputLogic.utf8Within(id, 64)) {
+            localError = "IDがUTF-8バイト上限を超えています";
+            return;
+        }
         if (dirty) {
             confirm("未保存の変更を破棄しますか？", "新しいMob Draftを作成します", "破棄して作成", () -> {
                 if (MobEditorClientState.create(id)) dirty = false;
@@ -1051,7 +1589,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private void updateSelectedEquipment(String color, boolean glint, boolean visible) {
-        collectCurrentTab();
+        collectCurrentTab(false);
         EnumMap<MobEditorData.Slot, MobEditorData.Equipment> equipment =
                 new EnumMap<>(MobEditorData.Slot.class);
         equipment.putAll(draft.appearance().equipment());
@@ -1078,6 +1616,11 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private void validateDraft() {
         collectCurrentTab();
+        if (!MobEditorConflictLogic.canMutate(
+                MobEditorClientState.state().revisionConflict())) {
+            localError = "競合を解決するまで検証できません。再読込またはMobの再選択を行ってください";
+            return;
+        }
         if (draft != null && localError.isBlank()) {
             if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.validateAbilities(draft, abilities.assigned());
             else MobEditorClientState.validate(draft);
@@ -1096,14 +1639,25 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             return;
         }
         if (draft != null && localError.isBlank()) {
-            if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.saveAbilities(draft, abilities.assigned());
-            else MobEditorClientState.save(draft);
+            pendingSave = MobEditorClientState.abilityAuthoringAvailable()
+                    ? MobEditorClientState.saveAbilities(draft, abilities.assigned())
+                    : saveV1Draft(draft);
         }
+    }
+
+    private boolean saveV1Draft(MobEditorData.Mob value) {
+        MobEditorClientState.save(value);
+        return MobEditorClientState.communicating();
     }
 
     private void applyDefinition() {
         collectCurrentTab();
         if (draft == null || !localError.isBlank()) return;
+        if (!MobEditorConflictLogic.canMutate(
+                MobEditorClientState.state().revisionConflict())) {
+            localError = "競合を解決するまで適用できません。再読込またはMobの再選択を行ってください";
+            return;
+        }
         if (dirty) {
             localError = "適用前にDraftを保存してください";
             return;
@@ -1111,10 +1665,15 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         if (!appliedEntityType.isBlank()
                 && !appliedEntityType.equals(draft.entityType())) {
             confirm("EntityType変更を適用しますか？", "既存個体は同じ位置で再生成されます", "適用",
-                    MobEditorClientState::apply);
+                    this::sendApply);
             return;
         }
+        sendApply();
+    }
+
+    private void sendApply() {
         MobEditorClientState.apply();
+        pendingApply = MobEditorClientState.communicating();
     }
 
     private void reloadDefinitions() {
@@ -1127,17 +1686,26 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private void discardAndReload() {
+        clearPendingDuplicate();
         if (!MobEditorClientState.reload()) {
             localError = "通信中です。応答後にもう一度操作してください";
             return;
         }
-        draft = null;
-        original = null;
-        dirty = false;
+        pendingSave = false;
+        pendingReload = true;
+        localError = "";
     }
 
     private void testSpawn(boolean cursor) {
         collectCurrentTab();
+        if (MobEditorClientState.state().revisionConflict()) {
+            localError = "競合を解決するまでテスト召喚できません";
+            return;
+        }
+        if (MobEditorClientState.communicating()) {
+            localError = "通信中です。応答後にもう一度操作してください";
+            return;
+        }
         if (draft != null && localError.isBlank()) {
             if (MobEditorClientState.abilityAuthoringAvailable()) MobEditorClientState.testAbilities(draft, abilities.assigned(), cursor);
             else MobEditorClientState.testSpawn(draft, cursor);
@@ -1179,6 +1747,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private void refreshWidgets() {
+        ProjectSDropdown.closeAny();
         clearWidgets();
         init();
     }
@@ -1194,6 +1763,12 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         var tokens = theme.tokens();
         graphics.fill(0, 0, width, height,
                 darkBackground ? tokens.background() : tokens.backgroundAlt());
+        if (layout == null || !layout.usable()) {
+            graphics.centeredText(font, "画面サイズが小さすぎます。ウィンドウを広げてください",
+                    width / 2, height / 2, tokens.warning());
+            super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
+            return;
+        }
         ProjectSUiDraw.cutPanel(graphics, layout.mobList().x(), layout.mobList().y(),
                 layout.mobList().width(), layout.mobList().height(), theme.metrics().cornerCut(),
                 tokens.surfaceAlt(), tokens.borderCard());
@@ -1213,6 +1788,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     protected void extractThemedForeground(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress
     ) {
+        if (layout == null || !layout.usable()) return;
         renderMessage(graphics);
         if (tab == Tab.AI && draft != null) renderAiSummary(graphics);
     }
@@ -1233,8 +1809,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         MobEditorLayout.Bounds previewContent = MobPreviewPanel.contentBounds(previewBounds, 7);
         MobPreviewPanel.renderChrome(graphics, font, previewBounds,
                 "ライブプレビュー  " + view + " / " + animation, darkBackground, grid, 7);
-        LivingEntity entity = draft == null ? null
-                : preview.update(draft, MobEditorClientState.state().headDetail());
+        LivingEntity entity = preview.update(draft, MobEditorClientState.state().headDetail());
         if (entity != null) {
             int centerX = (left + right) / 2 + (int) previewOffsetX;
             int centerY = (top + bottom) / 2 + 30 + (int) previewOffsetY;
@@ -1274,13 +1849,15 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         int x = layout.property().x() + 4;
         int y = layout.actionBar().y() - 12;
         if (!localError.isBlank()) {
-            graphics.text(font, font.plainSubstrByWidth(localError, layout.property().width() - 8),
+            graphics.text(font, font.plainSubstrByWidth(localError,
+                            Math.max(1, layout.property().width() - 8)),
                     x, y, tokens.danger(), false);
             return;
         }
         String message = MobEditorClientState.state().message();
         if (message.isBlank()) return;
-        graphics.text(font, font.plainSubstrByWidth(message, layout.property().width() - 8),
+        graphics.text(font, font.plainSubstrByWidth(message,
+                        Math.max(1, layout.property().width() - 8)),
                 x, y,
                 MobEditorClientState.state().success()
                         ? tokens.success() : tokens.danger(), false);
@@ -1336,6 +1913,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     ) {
         if (super.mouseScrolled(mouseX, mouseY, horizontal, vertical)) return true;
         if (modal.isOpen()) return true;
+        if (layout == null || !layout.usable()) return false;
         if (layout.property().contains(mouseX, mouseY) && draft != null
                 && propertyContentHeight() > layout.property().height()) {
             propertyScroll = layout.clampPropertyScroll(propertyScroll - (int) (vertical * 20),
@@ -1351,7 +1929,8 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private boolean insidePreview(double x, double y) {
-        return MobPreviewPanel.contains(layout.preview(), x, y);
+        return layout != null && layout.usable()
+                && MobPreviewPanel.contentBounds(layout.preview(), 7).contains(x, y);
     }
 
     private void resetPreview() {
@@ -1375,7 +1954,10 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private int propertyContentHeight() {
         return switch (tab) {
-            case APPEARANCE, BASIC, STATS, AI -> MobPropertyPanel.contentHeight(tab.name(), compactProperty());
+            case APPEARANCE -> Math.max(
+                    MobPropertyPanel.contentHeight(tab.name(), compactProperty()),
+                    compactProperty() ? 1000 : 600);
+            case BASIC, STATS, AI -> MobPropertyPanel.contentHeight(tab.name(), compactProperty());
             case TEST -> compactProperty() ? 228 : MobPropertyPanel.contentHeight(tab.name(), false);
             case ABILITIES -> AbilityAssignmentPanel.contentHeight(layout.property().width(),
                     Math.min(ABILITY_ASSIGNED_PAGE_SIZE, abilities.assigned().size()),
@@ -1385,7 +1967,9 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
 
     private String text(String key) {
         EditBox value = fields.get(key);
-        return value == null ? "" : value.getValue().trim();
+        if (value != null) return value.getValue().trim();
+        if (key.equals("entity") && draft != null) return draft.entityType();
+        return "";
     }
 
     private double decimal(String key) {
@@ -1395,7 +1979,16 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private int integer(String key) {
-        return Integer.parseInt(text(key));
+        int value = Integer.parseInt(text(key));
+        if (key.equals("level") && (value < 0 || value > 65_535)) {
+            throw new NumberFormatException();
+        }
+        return value;
+    }
+
+    private static boolean validTags(List<String> tags) {
+        if (tags.size() > 32 || tags.stream().distinct().count() != tags.size()) return false;
+        return tags.stream().allMatch(value -> MobEditorInputLogic.utf8Within(value, 32));
     }
 
     private static String number(double value) {
@@ -1432,23 +2025,11 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     }
 
     private static boolean supportsEquipment(String entityType) {
-        String value = entityType.toUpperCase(Locale.ROOT);
-        return value.contains("ZOMBIE") || value.contains("SKELETON")
-                || java.util.Set.of("HUSK", "DROWNED", "PIGLIN", "PIGLIN_BRUTE",
-                "ZOMBIFIED_PIGLIN", "STRAY", "BOGGED", "VILLAGER",
-                "VINDICATOR", "PILLAGER", "WITCH").contains(value);
+        return MobEditorUiLogic.equipmentSupported(entityType);
     }
 
     private static List<String> variantKeys(String entityType) {
-        return switch (entityType.toUpperCase(Locale.ROOT)) {
-            case "SLIME" -> List.of("size");
-            case "SHEEP" -> List.of("color", "sheared");
-            case "WOLF" -> List.of("variant", "collar-color", "angry");
-            case "CAT" -> List.of("variant", "collar-color");
-            case "HORSE" -> List.of("color");
-            case "VILLAGER" -> List.of("profession", "villager-type");
-            default -> List.of();
-        };
+        return MobEditorVariantLogic.keys(entityType);
     }
 
     private static String defaultVariant(String entityType, String key) {
@@ -1576,6 +2157,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
     @Override
     public void removed() {
         preview.close();
+        MobItemStackCache.clear();
         super.removed();
     }
 

@@ -44,5 +44,21 @@ public final class MobEditorV2RequestPayload implements CustomPacketPayload {
             throw new IllegalArgumentException("v2 request is too large");
         }
     }
+    int operation() { return operation; }
+    String target() {
+        return switch (operation) {
+            case MobEditorRequestPayload.REQUEST_DETAIL,
+                    MobEditorRequestPayload.CREATE_DRAFT,
+                    MobEditorRequestPayload.REQUEST_HEAD_DETAIL,
+                    MobEditorRequestPayload.UPDATE_HEAD_FAVORITE -> first;
+            case MobEditorRequestPayload.UPDATE_DRAFT,
+                    MobEditorRequestPayload.VALIDATE_DRAFT,
+                    MobEditorRequestPayload.SAVE_DRAFT,
+                    MobEditorRequestPayload.TEST_SPAWN ->
+                    mob == null ? "" : mob.base().id();
+            case MobEditorRequestPayload.CREATE_HEAD -> head == null ? "" : head.id();
+            default -> "";
+        };
+    }
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 }

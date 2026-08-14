@@ -46,11 +46,14 @@ public final class MobPropertyPanel {
     }
 
     public static MobEditorLayout.Bounds compactColumn(MobEditorLayout.Bounds panel, int row, int column, int columns) {
+        int safeColumns = Math.max(1, columns);
+        int safeRow = Math.max(0, row);
+        int safeColumn = Math.clamp(column, 0, safeColumns - 1);
         int gap = 4;
-        int width = Math.max(1, (panel.width() - gap * (columns - 1)) / columns);
-        int x = panel.x() + column * (width + gap);
-        if (column == columns - 1) width = panel.right() - x;
-        return new MobEditorLayout.Bounds(x, panel.y() + row * 38, width, 20);
+        int width = Math.max(1, (panel.width() - gap * (safeColumns - 1)) / safeColumns);
+        int x = panel.x() + safeColumn * (width + gap);
+        if (safeColumn == safeColumns - 1) width = Math.max(1, panel.right() - x);
+        return new MobEditorLayout.Bounds(x, panel.y() + safeRow * 38, width, 20);
     }
 
     public static int contentHeight(String tab, boolean compact) {

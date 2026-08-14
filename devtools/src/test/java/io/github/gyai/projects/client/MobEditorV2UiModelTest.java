@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 
@@ -73,8 +74,12 @@ public final class MobEditorV2UiModelTest {
 
         verifyAbilityModel();
         verifyAbilityUndoBaseline(decoded);
+        verifyConflictPreservesWorkingDraft(decoded);
+        verifySaveProgressDoesNotPromoteAuthority(decoded);
+        verifyHeadConflictDoesNotLatchMob(decoded);
         verifyDuplicateRequestCorrelation();
         verifySession(decoded);
+        verifyClientReceiverLifecycleGuards(decoded);
         verifyLayout();
         verifyCompiledClientRegistration();
         System.out.println("MobEditorV2UiModelTest passed");
@@ -113,27 +118,57 @@ public final class MobEditorV2UiModelTest {
         MobEditorProtocolSession session = new MobEditorProtocolSession();
         session.setCapabilities(true, true);
         assert session.preferredProtocol() == MobEditorProtocolSession.Protocol.V2;
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
         session.receiveV2(v2State);
         assert session.abilityAuthoringAvailable();
         assert session.state().success() && !session.state().revisionConflict();
         MobEditorV2StatePayload.State v2InProgress = new MobEditorV2StatePayload.State(
                 true, true, false, false, "保存中...", v2State.mobs(), v2State.detail(),
                 v2State.heads(), v2State.headDetail(), v2State.catalog());
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
         session.receiveV2(v2InProgress);
         assert session.communicating();
         session.receiveV2(v2State);
         assert !session.communicating();
+        assert session.v2State().detail() != null;
         MobEditorV2StatePayload.State conflict = new MobEditorV2StatePayload.State(
                 true, true, false, true, "競合", v2State.mobs(), v2State.detail(),
                 v2State.heads(), v2State.headDetail(), v2State.catalog());
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
         session.receiveV2(conflict);
         assert session.state().revisionConflict() && !session.state().success();
+        assert session.revisionConflictLatched();
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, false, false,
+                "保存中...", v2State.mobs(), v2State.detail(), v2State.heads(),
+                v2State.headDetail(), v2State.catalog()));
+        assert session.communicating() && session.revisionConflictLatched();
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "保存しました", v2State.mobs(), v2State.detail(), v2State.heads(),
+                v2State.headDetail(), v2State.catalog()));
+        assert !session.communicating() && session.revisionConflictLatched();
+        assert session.authoritativeDetail("projects:test").abilityIds().equals(
+                List.of("projects:stale", "projects:arcane_burst"));
+        assert session.beginRequest(MobEditorRequestPayload.REQUEST_MOB_LIST, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "一覧", List.of(), null, List.of(), null, v2State.catalog()));
+        assert !session.communicating() && session.revisionConflictLatched();
+        assert session.beginRequest(MobEditorRequestPayload.REQUEST_HEAD_LIST, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "Head一覧", List.of(), null, List.of(), null, v2State.catalog()));
+        assert !session.communicating() && session.revisionConflictLatched();
+        assert session.beginRequest(MobEditorRequestPayload.CONTROL_TEST_MOBS, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "テスト個体を更新しました", List.of(), null, List.of(), null,
+                v2State.catalog()));
+        assert !session.communicating() && session.revisionConflictLatched();
         session.receiveV2(new MobEditorV2StatePayload.State(false, true, false, false,
                 "拒否", List.of(), v2State.detail(), List.of(), null, v2State.catalog()));
         assert !session.abilityAuthoringAvailable();
         session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
                 "一覧", List.of(), null, List.of(), null, v2State.catalog()));
-        assert session.abilityAuthoringAvailable();
+        assert !session.abilityAuthoringAvailable();
+        assert session.revisionConflictLatched() && session.state().revisionConflict();
         assert session.authoritativeDetail("projects:test") != null;
         assert session.authoritativeDetail("projects:test").abilityIds().equals(
                 List.of("projects:stale", "projects:arcane_burst"));
@@ -142,7 +177,9 @@ public final class MobEditorV2UiModelTest {
         session.receiveV2(MobEditorV2StatePayload.State.unavailable("不正"));
         assert !session.abilityAuthoringAvailable();
         assert session.authoritativeDetail("projects:test") != null;
+        verifyStaleResponseGuards(v2State);
         session.setCapabilities(false, true);
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
         session.receiveV1(new MobEditorStatePayload.State(true, true, false, false,
                 "保存中...", List.of(), null, List.of(), null));
         assert session.communicating();
@@ -150,12 +187,145 @@ public final class MobEditorV2UiModelTest {
                 "保存しました", List.of(), v2State.detail().base(), List.of(), null));
         assert session.preferredProtocol() == MobEditorProtocolSession.Protocol.V1;
         assert !session.communicating();
-        assert !session.abilityAuthoringAvailable() && session.v2State() == null;
-        assert session.authoritativeDetail("projects:test") == null;
+        assert !session.abilityAuthoringAvailable() && session.v2State() != null;
+        assert session.authoritativeDetail("projects:test") != null;
         assert session.beginRequest() && session.communicating();
         session.reset();
         assert session.preferredProtocol() == MobEditorProtocolSession.Protocol.NONE;
         assert !session.communicating() && !session.abilityAuthoringAvailable();
+    }
+
+    private static void verifyStaleResponseGuards(
+            MobEditorV2StatePayload.State authority
+    ) {
+        MobEditorProtocolSession session = new MobEditorProtocolSession();
+        session.setCapabilities(true, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        session.receiveV2(authority);
+        MobEditorV2StatePayload.State accepted = session.v2State();
+
+        // A detail for another target must not replace the selected authority.
+        assert session.beginRequest(MobEditorRequestPayload.REQUEST_DETAIL,
+                "projects:other");
+        session.receiveV2(authority);
+        assert !session.communicating();
+        assert session.v2State() == accepted;
+        assert session.authoritativeDetail("projects:test") != null;
+
+        MobEditorV2Data.Mob staleMob = new MobEditorV2Data.Mob(
+                rename(authority.detail().base(), authority.detail().base().revision() - 1,
+                        "Older server response"), authority.detail().abilityIds());
+        assert session.beginRequest(MobEditorRequestPayload.RELOAD, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "再読込しました", authority.mobs(), staleMob, authority.heads(),
+                authority.headDetail(), authority.catalog()));
+        assert session.v2State() == accepted;
+        assert !session.communicating();
+
+        // A response arriving after close/reset is stale and ignored.
+        assert session.beginRequest(MobEditorRequestPayload.RELOAD, "");
+        session.reset();
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "再読込しました", List.of(), authority.detail(), List.of(), null,
+                authority.catalog()));
+        assert !session.communicating();
+        assert session.v2State() == null;
+    }
+
+    private static void verifyClientReceiverLifecycleGuards(
+            MobEditorV2StatePayload.State authority
+    ) throws Exception {
+        MobEditorClientState.reset();
+        long afterFirstReset = MobEditorClientState.captureGeneration();
+        MobEditorClientState.reset();
+        assert MobEditorClientState.captureGeneration() != afterFirstReset;
+
+        MobEditorProtocolSession session = clientSession();
+        verifyV1ClientReceiverLifecycle(session, authority.detail().base());
+        verifyV2ClientReceiverLifecycle(session, authority);
+        MobEditorClientState.reset();
+    }
+
+    private static void verifyV1ClientReceiverLifecycle(
+            MobEditorProtocolSession session, MobEditorData.Mob detail
+    ) {
+        MobEditorClientState.reset();
+        session.setCapabilities(false, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        long staleGeneration = MobEditorClientState.captureGeneration();
+        MobEditorStatePayload.State staleResponse = new MobEditorStatePayload.State(
+                true, true, true, false, "古いopen", List.of(), detail, List.of(), null);
+        Runnable queuedOldCallback = () -> MobEditorClientState.receive(
+                staleResponse, staleGeneration);
+
+        MobEditorClientState.reset();
+        session.setCapabilities(false, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        long currentGeneration = MobEditorClientState.captureGeneration();
+        assert currentGeneration != staleGeneration;
+        int revisionBeforeOldCallback = MobEditorClientState.localRevision();
+        queuedOldCallback.run();
+        assert MobEditorClientState.communicating();
+        assert session.pendingOperation() == MobEditorRequestPayload.OPEN;
+        assert session.state().message().isEmpty();
+        assert MobEditorClientState.localRevision() == revisionBeforeOldCallback;
+
+        MobEditorStatePayload.State currentResponse = new MobEditorStatePayload.State(
+                true, true, true, false, "新しいopen", List.of(), detail, List.of(), null);
+        MobEditorClientState.receive(currentResponse, currentGeneration);
+        assert !MobEditorClientState.communicating();
+        assert session.state().success();
+        assert session.state().message().equals("新しいopen");
+        assert session.state().detail() == detail;
+        assert MobEditorClientState.localRevision() == revisionBeforeOldCallback + 1;
+    }
+
+    private static void verifyV2ClientReceiverLifecycle(
+            MobEditorProtocolSession session, MobEditorV2StatePayload.State authority
+    ) {
+        MobEditorClientState.reset();
+        session.setCapabilities(true, false);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        long staleGeneration = MobEditorClientState.captureGeneration();
+        MobEditorV2StatePayload.State staleResponse = withMessage(authority, "古いopen-v2");
+        Runnable queuedOldCallback = () -> MobEditorClientState.receiveV2(
+                staleResponse, staleGeneration);
+
+        MobEditorClientState.close();
+        session.setCapabilities(true, false);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        long currentGeneration = MobEditorClientState.captureGeneration();
+        assert currentGeneration != staleGeneration;
+        int revisionBeforeOldCallback = MobEditorClientState.localRevision();
+        queuedOldCallback.run();
+        assert MobEditorClientState.communicating();
+        assert session.pendingOperation() == MobEditorRequestPayload.OPEN;
+        assert session.state().message().isEmpty();
+        assert session.v2State() == null;
+        assert MobEditorClientState.localRevision() == revisionBeforeOldCallback;
+
+        MobEditorV2StatePayload.State currentResponse = withMessage(authority, "新しいopen-v2");
+        MobEditorClientState.receiveV2(currentResponse, currentGeneration);
+        assert !MobEditorClientState.communicating();
+        assert session.state().success();
+        assert session.state().message().equals("新しいopen-v2");
+        assert session.v2State() == currentResponse;
+        assert MobEditorClientState.localRevision() == revisionBeforeOldCallback + 1;
+    }
+
+    private static MobEditorV2StatePayload.State withMessage(
+            MobEditorV2StatePayload.State source, String message
+    ) {
+        return new MobEditorV2StatePayload.State(
+                source.permitted(), source.supported(), source.success(),
+                source.revisionConflict(), message, source.mobs(), source.detail(),
+                source.heads(), source.headDetail(), source.catalog());
+    }
+
+    private static MobEditorProtocolSession clientSession() throws Exception {
+        Field field = MobEditorClientState.class.getDeclaredField("SESSION");
+        field.setAccessible(true);
+        return (MobEditorProtocolSession) field.get(null);
     }
 
     private static void verifyDuplicateRequestCorrelation() {
@@ -202,6 +372,7 @@ public final class MobEditorV2UiModelTest {
         assert !correlation.consumeSuccessful(true, true, false, true, "競合",
                 "projects:copy");
         assert !correlation.pending();
+
     }
 
     private static void verifyAbilityUndoBaseline(MobEditorV2StatePayload.State authority) {
@@ -223,6 +394,178 @@ public final class MobEditorV2UiModelTest {
         assert !baseline.capture(null, "projects:test");
     }
 
+    private static void verifyConflictPreservesWorkingDraft(
+            MobEditorV2StatePayload.State authority
+    ) {
+        MobEditorProtocolSession session = new MobEditorProtocolSession();
+        session.setCapabilities(true, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        session.receiveV2(authority);
+
+        MobEditorData.Mob workingMob = rename(authority.detail().base(),
+                "Local dirty name");
+        AbilityEditorModel workingAbilities = new AbilityEditorModel();
+        AbilityUndoBaseline baseline = new AbilityUndoBaseline();
+        assert baseline.capture(authority, workingMob.id());
+        workingAbilities.replace(baseline.assigned(), baseline.catalog());
+        assert workingAbilities.remove("projects:arcane_burst");
+        assert workingAbilities.add("projects:zeta");
+        List<String> dirtyAbilities = workingAbilities.assigned();
+        List<String> acceptedAbilities = baseline.assigned();
+
+        MobEditorV2Data.Mob staleConflictDetail = new MobEditorV2Data.Mob(
+                rename(authority.detail().base(), "Server stale name"),
+                List.of("projects:conflict"));
+        MobEditorV2StatePayload.State conflict = new MobEditorV2StatePayload.State(
+                true, true, false, true, "競合: server changed", authority.mobs(),
+                staleConflictDetail, authority.heads(), authority.headDetail(),
+                authority.catalog());
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
+        session.receiveV2(conflict);
+
+        assert session.state().revisionConflict();
+        assert session.authoritativeDetail(workingMob.id()).abilityIds()
+                .equals(acceptedAbilities);
+        assert MobEditorConflictLogic.preserveDirtyWorkingDraft(
+                true, workingMob, conflict.revisionConflict());
+        MobEditorData.Mob effective = MobEditorConflictLogic.effectiveDraft(
+                true, workingMob, conflict.detail().base(), conflict.revisionConflict());
+        assert effective == workingMob;
+        assert effective.displayName().equals("Local dirty name");
+        assert workingAbilities.assigned().equals(dirtyAbilities);
+        assert baseline.assigned().equals(acceptedAbilities);
+        assert MobEditorConflictLogic.canMutate(conflict.revisionConflict()) == false;
+
+        // An uncorrelated fresh-looking response cannot resolve the latch.
+        MobEditorV2Data.Mob refreshedDetail = new MobEditorV2Data.Mob(
+                rename(authority.detail().base(),
+                        authority.detail().base().revision() + 1,
+                        "Server refreshed name"),
+                List.of("projects:server"));
+        MobEditorV2StatePayload.State refreshed = new MobEditorV2StatePayload.State(
+                true, true, true, false, "再読込しました", authority.mobs(),
+                refreshedDetail, authority.heads(), authority.headDetail(),
+                List.of(new MobEditorV2Data.CatalogEntry("projects:server", "Server")));
+        session.receiveV2(refreshed);
+        assert session.revisionConflictLatched();
+        assert session.authoritativeDetail(workingMob.id()).abilityIds()
+                .equals(acceptedAbilities);
+
+        // A correlated reselect with the old revision is still stale.
+        assert session.beginRequest(MobEditorRequestPayload.REQUEST_DETAIL, workingMob.id());
+        session.receiveV2(authority);
+        assert session.revisionConflictLatched();
+        assert session.authoritativeDetail(workingMob.id()).abilityIds()
+                .equals(acceptedAbilities);
+
+        // A correlated reload carrying a genuinely newer definition accepts
+        // the new authority and clears the latch.
+        assert session.beginRequest(MobEditorRequestPayload.RELOAD, "");
+        session.receiveV2(refreshed);
+        assert !session.state().revisionConflict();
+        assert session.authoritativeDetail(workingMob.id()).abilityIds()
+                .equals(List.of("projects:server"));
+        assert !MobEditorConflictLogic.preserveDirtyWorkingDraft(
+                false, refreshed.detail().base(), refreshed.revisionConflict());
+        baseline.capture(refreshed, workingMob.id());
+        workingAbilities.replace(baseline.assigned(), baseline.catalog());
+        assert workingAbilities.assigned().equals(List.of("projects:server"));
+        assert baseline.assigned().equals(List.of("projects:server"));
+    }
+
+    private static void verifySaveProgressDoesNotPromoteAuthority(
+            MobEditorV2StatePayload.State authority
+    ) {
+        MobEditorProtocolSession session = new MobEditorProtocolSession();
+        session.setCapabilities(true, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        session.receiveV2(authority);
+        List<String> accepted = authority.detail().abilityIds();
+        MobEditorData.Mob dirtyMob = rename(authority.detail().base(), "Dirty during save");
+        AbilityUndoBaseline baseline = new AbilityUndoBaseline();
+        assert baseline.capture(authority, dirtyMob.id());
+        AbilityEditorModel dirtyAbilities = new AbilityEditorModel();
+        dirtyAbilities.replace(baseline.assigned(), baseline.catalog());
+        assert dirtyAbilities.remove("projects:arcane_burst");
+        assert dirtyAbilities.add("projects:zeta");
+        List<String> dirtyAssigned = dirtyAbilities.assigned();
+        MobEditorV2Data.Mob progressDetail = new MobEditorV2Data.Mob(
+                authority.detail().base(), List.of("projects:progress-only"));
+        assert session.beginRequest(MobEditorRequestPayload.SAVE_DRAFT, "");
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, false, false,
+                "保存中...", authority.mobs(), progressDetail, authority.heads(),
+                authority.headDetail(), List.of(
+                        new MobEditorV2Data.CatalogEntry("projects:progress-only", "Progress"))));
+        assert session.communicating();
+        assert session.authoritativeDetail("projects:test").abilityIds().equals(accepted);
+        assert dirtyAbilities.assigned().equals(dirtyAssigned);
+        assert baseline.assigned().equals(accepted);
+
+        MobEditorV2Data.Mob conflictDetail = new MobEditorV2Data.Mob(
+                authority.detail().base(), List.of("projects:server-conflict"));
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, false, true,
+                "競合", authority.mobs(), conflictDetail, authority.heads(),
+                authority.headDetail(), authority.catalog()));
+        assert session.revisionConflictLatched();
+        assert session.authoritativeDetail("projects:test").abilityIds().equals(accepted);
+        assert session.authoritativeV2State().detail().abilityIds().equals(accepted);
+        assert dirtyMob.displayName().equals("Dirty during save");
+        assert dirtyAbilities.assigned().equals(dirtyAssigned);
+        assert baseline.assigned().equals(accepted);
+    }
+
+    private static void verifyHeadConflictDoesNotLatchMob(
+            MobEditorV2StatePayload.State authority
+    ) {
+        MobEditorProtocolSession session = new MobEditorProtocolSession();
+        session.setCapabilities(true, true);
+        assert session.beginRequest(MobEditorRequestPayload.OPEN, "");
+        session.receiveV2(authority);
+        List<String> accepted = authority.detail().abilityIds();
+        MobEditorData.Head selectedHead = new MobEditorData.Head(1, 3,
+                "projects:head", "Head", MobEditorData.HeadSource.VANILLA_HEAD,
+                "", "", "", List.of("local"), false, "");
+        assert session.beginRequest(MobEditorRequestPayload.UPDATE_HEAD_FAVORITE,
+                selectedHead.id());
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, false, true,
+                "Head定義のrevisionが競合しました", authority.mobs(), authority.detail(),
+                authority.heads(), selectedHead, authority.catalog()));
+        assert !session.revisionConflictLatched();
+        assert !session.state().revisionConflict();
+        assert session.state().message().contains("Head定義");
+        assert session.authoritativeDetail("projects:test").abilityIds().equals(accepted);
+        MobEditorData.Head refreshedHead = new MobEditorData.Head(1, 4,
+                selectedHead.id(), selectedHead.displayName(), selectedHead.source(),
+                selectedHead.playerName(), selectedHead.textureValue(),
+                selectedHead.projectsItemId(), selectedHead.tags(), true,
+                selectedHead.sourceNote());
+        assert session.beginRequest(MobEditorRequestPayload.REQUEST_HEAD_DETAIL,
+                selectedHead.id());
+        session.receiveV2(new MobEditorV2StatePayload.State(true, true, true, false,
+                "Headを取得しました", authority.mobs(), authority.detail(), authority.heads(),
+                refreshedHead == null ? authority.headDetail() : refreshedHead,
+                authority.catalog()));
+        assert !session.revisionConflictLatched();
+        assert !session.state().revisionConflict();
+        assert session.authoritativeDetail("projects:test").abilityIds().equals(accepted);
+    }
+
+    private static MobEditorData.Mob rename(
+            MobEditorData.Mob source, String displayName
+    ) {
+        return rename(source, source.revision(), displayName);
+    }
+
+    private static MobEditorData.Mob rename(
+            MobEditorData.Mob source, long revision, String displayName
+    ) {
+        return new MobEditorData.Mob(
+                source.schemaVersion(), revision, source.id(), displayName,
+                source.entityType(), source.category(), source.enabled(), source.level(),
+                source.nameplate(), source.tags(), source.stats(), source.attack(),
+                source.ai(), source.appearance());
+    }
+
     private static void verifyV2RequestWriteGuards() {
         MobEditorData.Head duplicateTags = new MobEditorData.Head(1, 0, "projects:head",
                 "Head", MobEditorData.HeadSource.VANILLA_HEAD, "", "", "",
@@ -242,7 +585,11 @@ public final class MobEditorV2UiModelTest {
                 "devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSDevTools.java"));
         assert source.contains("MobEditorV2RequestPayload.TYPE")
                 && source.contains("MobEditorV2StatePayload.TYPE")
-                && source.contains("MobEditorClientState.receiveV2(payload.state())")
+                && source.contains("MobEditorClientState.captureGeneration()")
+                && source.contains("MobEditorClientState.receive(payload.state(), generation)")
+                && source.contains("MobEditorClientState.receiveV2(payload.state(), generation)")
+                && !source.contains("MobEditorClientState.receive(payload.state())")
+                && !source.contains("MobEditorClientState.receiveV2(payload.state())")
                 && source.contains("MobEditorClientState.reset()");
         assert Class.forName("io.github.gyai.projects.devtools.ProjectSDevTools", false,
                 MobEditorV2UiModelTest.class.getClassLoader()) != null;

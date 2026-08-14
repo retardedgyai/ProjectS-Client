@@ -48,6 +48,10 @@ public final class MobPreviewEntity implements AutoCloseable {
             MobEditorData.Mob definition,
             MobEditorData.Head selectedHead
     ) {
+        if (definition == null) {
+            clearPreviewState();
+            return null;
+        }
         if (closed) closed = false;
         if (entity == null || !entityType.equals(definition.entityType())) {
             create(definition.entityType());
@@ -55,17 +59,38 @@ public final class MobPreviewEntity implements AutoCloseable {
         if (entity == null) return null;
         if (definition.equals(lastDefinition)
                 && java.util.Objects.equals(selectedHead, lastHead)) return entity;
-        entity.setCustomName(Component.literal(definition.displayName()));
-        entity.setCustomNameVisible(
-                definition.nameplate() == MobEditorData.NameplateMode.ALWAYS);
-        entity.setGlowingTag(definition.appearance().glowing());
-        var scale = entity.getAttribute(Attributes.SCALE);
-        if (scale != null) scale.setBaseValue(definition.appearance().scale());
-        if (entity instanceof AgeableMob ageable) {
-            ageable.setBaby(definition.appearance().age() == MobEditorData.Age.BABY);
+        MobEditorData.Mob previous = lastDefinition;
+        if (previous == null || !definition.displayName().equals(previous.displayName())) {
+            entity.setCustomName(Component.literal(definition.displayName()));
         }
-        applyVariants(definition.appearance().variants());
-        applyEquipment(definition.appearance(), selectedHead);
+        if (previous == null || definition.nameplate() != previous.nameplate()) {
+            entity.setCustomNameVisible(
+                    definition.nameplate() == MobEditorData.NameplateMode.ALWAYS);
+        }
+        if (previous == null || definition.appearance().glowing()
+                != previous.appearance().glowing()) {
+            entity.setGlowingTag(definition.appearance().glowing());
+        }
+        if (previous == null || definition.appearance().scale()
+                != previous.appearance().scale()) {
+            var scale = entity.getAttribute(Attributes.SCALE);
+            if (scale != null) scale.setBaseValue(definition.appearance().scale());
+        }
+        if (previous == null || definition.appearance().age()
+                != previous.appearance().age()) {
+            if (entity instanceof AgeableMob ageable) {
+                ageable.setBaby(definition.appearance().age() == MobEditorData.Age.BABY);
+            }
+        }
+        if (previous == null || !definition.appearance().variants()
+                .equals(previous.appearance().variants())) {
+            applyVariants(definition.appearance().variants());
+        }
+        if (previous == null || !definition.appearance().equipment()
+                .equals(previous.appearance().equipment())
+                || !java.util.Objects.equals(selectedHead, lastHead)) {
+            applyEquipment(definition.appearance(), selectedHead);
+        }
         lastDefinition = definition;
         lastHead = selectedHead;
         return entity;
@@ -128,30 +153,28 @@ public final class MobPreviewEntity implements AutoCloseable {
     }
 
     private void applyVariants(Map<String, String> variants) {
-        if (entity instanceof Slime slime && variants.containsKey("size")) {
+        if (entity instanceof Slime slime) {
             try {
                 slime.setSize(Math.clamp(
-                        Integer.parseInt(variants.get("size")), 1, 127), false);
+                        Integer.parseInt(variants.getOrDefault("size", "1")), 1, 127), false);
             } catch (NumberFormatException ignored) {
                 slime.setSize(1, false);
             }
         }
         if (entity instanceof Sheep sheep) {
-            String color = variants.get("color");
-            if (color != null) {
-                try {
-                    sheep.setColor(net.minecraft.world.item.DyeColor.valueOf(
-                            color.toUpperCase(Locale.ROOT)));
-                } catch (IllegalArgumentException ignored) { }
+            try {
+                sheep.setColor(net.minecraft.world.item.DyeColor.valueOf(
+                        variants.getOrDefault("color", "WHITE").toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException ignored) {
+                sheep.setColor(net.minecraft.world.item.DyeColor.WHITE);
             }
-            if (variants.containsKey("sheared")) {
-                sheep.setSheared(Boolean.parseBoolean(variants.get("sheared")));
-            }
+            sheep.setSheared(Boolean.parseBoolean(variants.getOrDefault("sheared", "false")));
         }
         if (entity instanceof Wolf wolf) {
-            dye(variants.get("collar-color"), color ->
+            dye(variants.getOrDefault("collar-color", "RED"), color ->
                     wolf.setComponent(DataComponents.WOLF_COLLAR, color));
-            dynamicVariant(Registries.WOLF_VARIANT, variants.get("variant"), value ->
+            dynamicVariant(Registries.WOLF_VARIANT,
+                    variants.getOrDefault("variant", "PALE"), value ->
                     wolf.setComponent(DataComponents.WOLF_VARIANT, value));
             if (Boolean.parseBoolean(variants.getOrDefault("angry", "false"))) {
                 wolf.setPersistentAngerEndTime(
@@ -161,18 +184,19 @@ public final class MobPreviewEntity implements AutoCloseable {
             }
         }
         if (entity instanceof Cat cat) {
-            dye(variants.get("collar-color"), color ->
+            dye(variants.getOrDefault("collar-color", "RED"), color ->
                     cat.setComponent(DataComponents.CAT_COLLAR, color));
-            dynamicVariant(Registries.CAT_VARIANT, variants.get("variant"), value ->
+            dynamicVariant(Registries.CAT_VARIANT,
+                    variants.getOrDefault("variant", "TABBY"), value ->
                     cat.setComponent(DataComponents.CAT_VARIANT, value));
         }
         if (entity instanceof Horse horse) {
-            enumValue(Variant.class, variants.get("color"), value ->
+            enumValue(Variant.class, variants.getOrDefault("color", "BROWN"), value ->
                     horse.setComponent(DataComponents.HORSE_VARIANT, value));
         }
         if (entity instanceof Villager villager) {
-            String profession = variants.get("profession");
-            String type = variants.get("villager-type");
+            String profession = variants.getOrDefault("profession", "NONE");
+            String type = variants.getOrDefault("villager-type", "PLAINS");
             var data = villager.getVillagerData();
             if (profession != null) {
                 Identifier id = Identifier.tryBuild(
@@ -308,7 +332,12 @@ public final class MobPreviewEntity implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        clearPreviewState();
+    }
+
+    private void clearPreviewState() {
         entity = null;
+        entityType = "";
         lastDefinition = null;
         lastHead = null;
     }

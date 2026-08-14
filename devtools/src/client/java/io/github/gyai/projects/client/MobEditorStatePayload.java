@@ -112,6 +112,12 @@ public record MobEditorStatePayload(State state)
             List<HeadSummary> heads,
             MobEditorData.Head headDetail
     ) {
+        public State {
+            message = message == null ? "" : message;
+            mobs = mobs == null ? List.of() : List.copyOf(mobs);
+            heads = heads == null ? List.of() : List.copyOf(heads);
+        }
+
         public static State unavailable(String message) {
             return new State(false, false, false, false,
                     message, List.of(), null, List.of(), null);
@@ -126,7 +132,11 @@ public record MobEditorStatePayload(State state)
             boolean enabled,
             long revision,
             List<String> tags
-    ) { }
+    ) {
+        public MobSummary {
+            tags = tags == null ? List.of() : List.copyOf(tags);
+        }
+    }
 
     public record HeadSummary(
             String id,
@@ -134,5 +144,9 @@ public record MobEditorStatePayload(State state)
             MobEditorData.HeadSource source,
             boolean favorite,
             List<String> tags
-    ) { }
+    ) {
+        public HeadSummary {
+            tags = tags == null ? List.of() : List.copyOf(tags);
+        }
+    }
 }

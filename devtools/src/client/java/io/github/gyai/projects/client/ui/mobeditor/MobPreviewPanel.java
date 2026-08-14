@@ -17,19 +17,32 @@ public final class MobPreviewPanel {
     public static MobEditorLayout.Bounds controlBounds(
             MobEditorLayout.Bounds preview, int index, int count
     ) {
-        int columns = Math.min(3, Math.max(1, count));
+        int safeCount = Math.max(1, count);
+        int columns = Math.min(3, safeCount);
         int width = Math.max(1, (preview.width() - 20) / columns);
-        int column = index % columns;
-        int row = index / columns;
-        return new MobEditorLayout.Bounds(preview.x() + 8 + column * (width + 2),
-                preview.bottom() - 24 - row * 24, width, 20);
+        int safeIndex = Math.clamp(index, 0, safeCount - 1);
+        int column = safeIndex % columns;
+        int row = safeIndex / columns;
+        int rawX = preview.x() + 8 + column * (width + 2);
+        int safeX = Math.clamp(rawX, preview.x(), preview.right());
+        int safeWidth = Math.max(0, Math.min(width, preview.right() - safeX));
+        int rawY = preview.bottom() - 24 - row * 24;
+        int safeY = Math.clamp(rawY, preview.y(), preview.bottom());
+        int safeHeight = Math.max(0, Math.min(20, preview.bottom() - safeY));
+        return new MobEditorLayout.Bounds(safeX, safeY, safeWidth, safeHeight);
     }
 
     public static MobEditorLayout.Bounds contentBounds(MobEditorLayout.Bounds preview, int controlCount) {
-        int rows = (int) Math.ceil(controlCount / 3.0);
-        int footer = rows * 24 + 8;
-        return new MobEditorLayout.Bounds(preview.x() + 8, preview.y() + 26,
-                Math.max(1, preview.width() - 16), Math.max(1, preview.height() - 34 - footer));
+        int safeCount = Math.max(0, controlCount);
+        int rows = (int) Math.min(Integer.MAX_VALUE, ((long) safeCount + 2) / 3);
+        int footer = (int) Math.clamp((long) rows * 24 + 8, 0L, Integer.MAX_VALUE);
+        int safeX = Math.clamp(preview.x() + 8, preview.x(), preview.right());
+        int safeY = Math.clamp(preview.y() + 26, preview.y(), preview.bottom());
+        int safeWidth = Math.max(0, Math.min(Math.max(0, preview.width() - 16),
+                preview.right() - safeX));
+        int safeHeight = Math.max(0, Math.min(
+                Math.max(0, preview.height() - 34 - footer), preview.bottom() - safeY));
+        return new MobEditorLayout.Bounds(safeX, safeY, safeWidth, safeHeight);
     }
 
     public static void renderChrome(GuiGraphicsExtractor graphics, Font font, MobEditorLayout.Bounds bounds,

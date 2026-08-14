@@ -82,9 +82,10 @@ public record MobEditorV2StatePayload(State state) implements CustomPacketPayloa
             List<MobEditorV2Data.CatalogEntry> catalog
     ) {
         public State {
-            mobs = List.copyOf(mobs);
-            heads = List.copyOf(heads);
-            catalog = List.copyOf(catalog);
+            message = message == null ? "" : message;
+            mobs = mobs == null ? List.of() : List.copyOf(mobs);
+            heads = heads == null ? List.of() : List.copyOf(heads);
+            catalog = catalog == null ? List.of() : List.copyOf(catalog);
         }
 
         public static State unavailable(String message) {

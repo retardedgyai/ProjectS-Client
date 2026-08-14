@@ -8,6 +8,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.DoubleStream;
 
 public final class MobEditorData {
     public static final int VERSION = 1;
@@ -65,10 +66,12 @@ public final class MobEditorData {
             Map<Slot, Equipment> equipment
     ) {
         public Appearance {
-            variants = Map.copyOf(variants);
+            variants = variants == null ? Map.of() : Map.copyOf(variants);
             EnumMap<Slot, Equipment> safe = new EnumMap<>(Slot.class);
+            Map<Slot, Equipment> supplied = equipment == null ? Map.of() : equipment;
             for (Slot slot : Slot.values()) {
-                safe.put(slot, equipment.getOrDefault(slot, Equipment.empty()));
+                Equipment value = supplied.get(slot);
+                safe.put(slot, value == null ? Equipment.empty() : value);
             }
             equipment = Map.copyOf(safe);
         }
@@ -81,7 +84,7 @@ public final class MobEditorData {
             BasicAttack attack, Ai ai, Appearance appearance
     ) {
         public Mob {
-            tags = List.copyOf(tags);
+            tags = tags == null ? List.of() : List.copyOf(tags);
         }
 
         public static Mob create(String id) {
@@ -103,8 +106,12 @@ public final class MobEditorData {
             int schemaVersion, long revision, String id, String displayName,
             HeadSource source, String playerName, String textureValue,
             String projectsItemId, List<String> tags,
-            boolean favorite, String sourceNote
-    ) { }
+        boolean favorite, String sourceNote
+    ) {
+        public Head {
+            tags = tags == null ? List.of() : List.copyOf(tags);
+        }
+    }
 
     public static Mob readMob(FriendlyByteBuf buffer) {
         int schema = buffer.readUnsignedByte();
@@ -150,13 +157,19 @@ public final class MobEditorData {
                     readString(buffer, 16), buffer.readBoolean(),
                     buffer.readBoolean(), buffer.readBoolean()));
         }
-        return new Mob(schema, revision, id, name, entityType,
+        Mob result = new Mob(schema, revision, id, name, entityType,
                 category, enabled, level, nameplate, tags, stats,
                 attack, ai, new Appearance(
                 scale, age, glowing, glowingColor, variants, equipment));
+        if (!finite(result)) throw new IllegalArgumentException("Non-finite mob field");
+        return result;
     }
 
     public static void writeMob(FriendlyByteBuf buffer, Mob value) {
+        if (value == null || value.level() < 0 || value.level() > 65_535
+                || !finite(value)) {
+            throw new IllegalArgumentException("Invalid mob numeric fields");
+        }
         buffer.writeByte(value.schemaVersion());
         buffer.writeLong(value.revision());
         writeString(buffer, value.id(), 64);
@@ -280,6 +293,26 @@ public final class MobEditorData {
     private static void writeEnum(FriendlyByteBuf buffer, Enum<?> value) {
         if (value == null) throw new IllegalArgumentException("Missing enum");
         writeString(buffer, value.name(), 32);
+    }
+
+    static boolean finite(Mob value) {
+        Stats stats = value.stats();
+        BasicAttack attack = value.attack();
+        Ai ai = value.ai();
+        return stats != null
+                && DoubleStream.of(stats.maxHealth(), stats.physicalAttack(),
+                stats.magicalAttack(), stats.physicalDefense(), stats.magicalDefense(),
+                stats.movementSpeed(), stats.attackSpeed(), stats.criticalChance(),
+                stats.criticalDamage(), stats.damageReduction()).allMatch(Double::isFinite)
+                && attack != null
+                && DoubleStream.of(attack.fixedDamage(), attack.coefficient(),
+                attack.intervalSeconds(), attack.range(), attack.knockback())
+                .allMatch(Double::isFinite)
+                && ai != null
+                && DoubleStream.of(ai.aggroRange(), ai.chaseRange(), ai.leashRange(),
+                ai.attackRange(), ai.refreshSeconds()).allMatch(Double::isFinite)
+                && value.appearance() != null
+                && Double.isFinite(value.appearance().scale());
     }
 
     private static List<String> readStrings(

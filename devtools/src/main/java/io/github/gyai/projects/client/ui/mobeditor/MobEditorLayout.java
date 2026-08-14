@@ -69,16 +69,31 @@ public final class MobEditorLayout {
         int contentTop = margin + headerHeight + gutter;
         int actionY = Math.max(contentTop + tabHeight + 8, height - margin - actionHeight);
         int contentBottom = Math.max(contentTop + tabHeight + 4, actionY - gutter);
-        Bounds header = new Bounds(margin, margin, width - margin * 2, headerHeight);
-        Bounds mobList = new Bounds(margin, contentTop, mobWidth, contentBottom - contentTop);
+        Bounds header = bounded(margin, margin, width - margin * 2, headerHeight,
+                width, height);
+        Bounds mobList = bounded(margin, contentTop, mobWidth,
+                contentBottom - contentTop, width, height);
         int propertyX = mobList.right() + gutter;
-        Bounds tabs = new Bounds(propertyX, contentTop, propertyWidth, tabHeight);
-        Bounds property = new Bounds(propertyX, tabs.bottom() + 4, propertyWidth,
-                Math.max(48, contentBottom - tabs.bottom() - 4));
-        Bounds preview = new Bounds(property.right() + gutter, contentTop, previewWidth,
-                contentBottom - contentTop);
-        Bounds actionBar = new Bounds(propertyX, actionY, propertyWidth, ACTION_HEIGHT);
+        Bounds tabs = bounded(propertyX, contentTop, propertyWidth, tabHeight,
+                width, height);
+        Bounds property = bounded(propertyX, tabs.bottom() + 4, propertyWidth,
+                Math.max(48, contentBottom - tabs.bottom() - 4), width, height);
+        Bounds preview = bounded(property.right() + gutter, contentTop, previewWidth,
+                contentBottom - contentTop, width, height);
+        Bounds actionBar = bounded(propertyX, actionY, propertyWidth, ACTION_HEIGHT,
+                width, height);
         return new MobEditorLayout(header, mobList, tabs, property, preview, actionBar);
+    }
+
+    private static Bounds bounded(int x, int y, int width, int height,
+                                  int screenWidth, int screenHeight) {
+        int left = Math.clamp(x, 0, screenWidth);
+        int top = Math.clamp(y, 0, screenHeight);
+        int right = (int) Math.clamp((long) x + Math.max(0L, width), left,
+                screenWidth);
+        int bottom = (int) Math.clamp((long) y + Math.max(0L, height), top,
+                screenHeight);
+        return new Bounds(left, top, right - left, bottom - top);
     }
 
     public Bounds header() { return header; }
@@ -94,5 +109,22 @@ public final class MobEditorLayout {
 
     public int clampPropertyScroll(int scroll, int contentHeight) {
         return Math.clamp(scroll, 0, propertyScrollMaximum(contentHeight));
+    }
+
+    /** True when every primary region has a usable positive rectangle. */
+    public boolean usable() {
+        return header.width() > 0 && header.height() > 0
+                && mobList.width() > 0 && mobList.height() > 0
+                && tabs.width() > 0 && tabs.height() > 0
+                && property.width() > 0 && property.height() > 0
+                && preview.width() > 0 && preview.height() > 0
+                && actionBar.width() > 0 && actionBar.height() > 0
+                && inside(header) && inside(mobList) && inside(tabs)
+                && inside(property) && inside(preview) && inside(actionBar);
+    }
+
+    private static boolean inside(Bounds bounds) {
+        return bounds.x() >= 0 && bounds.y() >= 0
+                && bounds.right() >= bounds.x() && bounds.bottom() >= bounds.y();
     }
 }

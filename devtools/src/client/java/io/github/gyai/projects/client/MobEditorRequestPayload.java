@@ -158,6 +158,21 @@ public final class MobEditorRequestPayload implements CustomPacketPayload {
         }
     }
 
+    int operation() {
+        return operation;
+    }
+
+    String target() {
+        return switch (operation) {
+            case REQUEST_DETAIL, CREATE_DRAFT, REQUEST_HEAD_DETAIL,
+                    UPDATE_HEAD_FAVORITE -> first;
+            case UPDATE_DRAFT, VALIDATE_DRAFT, SAVE_DRAFT, TEST_SPAWN ->
+                    mob == null ? "" : mob.id();
+            case CREATE_HEAD -> head == null ? "" : head.id();
+            default -> "";
+        };
+    }
+
     @Override
     public Type<? extends CustomPacketPayload> type() {
         return TYPE;

@@ -11,7 +11,7 @@ public final class MobListPanel {
     private MobListPanel() { }
 
     public static MobEditorLayout.Bounds rowBounds(MobEditorLayout.Bounds panel, int y) {
-        return new MobEditorLayout.Bounds(panel.x() + 4, y, panel.width() - 8, ROW_HEIGHT);
+        return new MobEditorLayout.Bounds(panel.x() + 4, y, Math.max(1, panel.width() - 8), ROW_HEIGHT);
     }
 
     public static int rowStride() {
@@ -43,11 +43,13 @@ public final class MobListPanel {
     }
 
     private static MobEditorLayout.Bounds fitted(MobEditorLayout.Bounds panel, int y, int index, int count) {
+        int safeCount = Math.max(1, count);
+        int safeIndex = Math.clamp(index, 0, safeCount - 1);
         int padding = 4;
         int gap = 4;
-        int width = Math.max(1, (panel.width() - padding * 2 - gap * (count - 1)) / count);
-        int x = panel.x() + padding + index * (width + gap);
-        if (index == count - 1) width = panel.right() - padding - x;
+        int width = Math.max(1, (panel.width() - padding * 2 - gap * (safeCount - 1)) / safeCount);
+        int x = panel.x() + padding + safeIndex * (width + gap);
+        if (safeIndex == safeCount - 1) width = Math.max(1, panel.right() - padding - x);
         return new MobEditorLayout.Bounds(x, y, width, 20);
     }
 }
