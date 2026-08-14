@@ -45,6 +45,7 @@ public final class MinecraftTypographyAdapterTest {
             check(drawCount.get() == 2, "custom renderer emits both glyphs");
         }
         try (MinecraftTypographyResources resources = new MinecraftTypographyResources(runtime, source)) {
+            check(resources.shellTypographyReady(), "Client Shell Inter/Noto STB typography readiness");
             long before = resources.registry().generation();
             long runtimeBefore = runtime.generation();
             resources.reload();

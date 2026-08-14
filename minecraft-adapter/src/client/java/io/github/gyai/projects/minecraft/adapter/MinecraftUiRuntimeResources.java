@@ -4,6 +4,10 @@ import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasBinding;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasDescriptor;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasStore;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconRenderer;
+import io.github.gyai.projects.minecraft.adapter.shell.MinecraftShellSurfaceBinding;
+import io.github.gyai.projects.minecraft.adapter.shell.MinecraftShellSurfaceLoader;
+import io.github.gyai.projects.minecraft.adapter.shell.MinecraftShellSurfaceRenderer;
+import io.github.gyai.projects.minecraft.adapter.shell.ShellSurfaceKind;
 import io.github.gyai.projects.minecraft.adapter.typography.MinecraftGlyphAtlasTextureStore;
 import io.github.gyai.projects.minecraft.adapter.typography.MinecraftResourceManagerFontSource;
 import io.github.gyai.projects.minecraft.adapter.typography.MinecraftTypographyResources;
@@ -17,6 +21,7 @@ import io.github.gyai.projects.ui.runtime.typography.TextLayout;
 import io.github.gyai.projects.ui.runtime.typography.TextLayoutOptions;
 import io.github.gyai.projects.ui.runtime.typography.TypographyRuntime;
 import io.github.gyai.projects.ui.runtime.typography.FontCatalog;
+import io.github.gyai.projects.ui.runtime.icon.ShellIconCatalog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -39,10 +44,14 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
     private final TextureManager textureManager;
     private final MinecraftIconAtlasStore iconAtlases = new MinecraftIconAtlasStore(2);
     private final MinecraftIconAtlasDescriptor iconDescriptor = MinecraftIconAtlasDescriptor.studio24();
+    private final MinecraftIconAtlasDescriptor shellIconDescriptor = MinecraftIconAtlasDescriptor.shell96();
+    private final MinecraftShellSurfaceLoader shellSurfaceLoader = new MinecraftShellSurfaceLoader();
     private final MinecraftTextLayoutCache textLayouts = new MinecraftTextLayoutCache();
     private MinecraftTypographyResources typography;
     private MinecraftGlyphAtlasTextureStore glyphTextures;
     private MinecraftIconAtlasBinding iconAtlas;
+    private MinecraftIconAtlasBinding shellIconAtlas;
+    private MinecraftShellSurfaceBinding shellSurfaces;
     private long reloadGeneration;
     private int frameDepth;
     private boolean closed;
@@ -108,6 +117,8 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
                 textureManager, typography.atlas(), reloadGeneration);
         iconAtlases.onResourceReload();
         iconAtlas = iconAtlases.resolve(resourceManager, iconDescriptor).orElse(null);
+        shellIconAtlas = iconAtlases.resolve(resourceManager, shellIconDescriptor).orElse(null);
+        shellSurfaces = shellSurfaceLoader.inspect(resourceManager).orElse(null);
     }
 
     public synchronized boolean typographyReady() {
@@ -117,6 +128,23 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
     public synchronized long reloadGeneration() { return reloadGeneration; }
     public synchronized int iconAtlasCacheSize() { return iconAtlases.size(); }
     public synchronized boolean iconAtlasAvailable() { return iconAtlas != null; }
+    public synchronized boolean shellIconAtlasAvailable() { return shellIconAtlas != null; }
+
+    /** True only when the antialiased shell alpha-mask atlas passed its resource audit. */
+    public synchronized boolean shellSurfaceResourcesReady() {
+        return !closed && shellSurfaces != null;
+    }
+
+    /**
+     * Client Shell visual gate. A false result is fail-closed: the Shell must not render text or
+     * geometry through platform fallbacks while its bundled assets are incomplete.
+     */
+    public synchronized boolean clientShellVisualsReady() {
+        return !closed && glyphTextures != null && typography != null
+                && typography.shellTypographyReady()
+                && shellIconAtlas != null && shellSurfaces != null
+                && ShellIconCatalog.validate().isEmpty();
+    }
     public synchronized TypographyRuntime typographyRuntime() {
         return typography == null ? null : typography.runtime();
     }
@@ -155,14 +183,54 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
 
     public synchronized void renderIcon(GuiGraphicsExtractor graphics, UiRect bounds,
                                         IconKey key, UiColor tint) {
-        renderIcon(graphics, bounds, key, IconState.NORMAL, tint);
+        renderIcon(graphics, bounds, key, IconState.NORMAL, tint, MinecraftUiRenderProfile.LEGACY);
     }
 
     public synchronized void renderIcon(GuiGraphicsExtractor graphics, UiRect bounds,
                                         IconKey key, IconState state, UiColor tint) {
+        renderIcon(graphics, bounds, key, state, tint, MinecraftUiRenderProfile.LEGACY);
+    }
+
+    /** Profile-aware icon routing; legacy callers never select the Shell atlas. */
+    public synchronized void renderIcon(GuiGraphicsExtractor graphics, UiRect bounds,
+                                        IconKey key, IconState state, UiColor tint,
+                                        MinecraftUiRenderProfile profile) {
         if (graphics == null || bounds == null || key == null || tint == null) return;
-        MinecraftIconRenderer.render(graphics, key, bounds,
-                state == null ? IconState.NORMAL : state, tint, iconAtlas);
+        IconState resolvedState = state == null ? IconState.NORMAL : state;
+        if (profile == MinecraftUiRenderProfile.CAELESTIA_SHELL) {
+            if (!clientShellVisualsReady()) return;
+            if (ShellIconCatalog.contains(key)) {
+            // Shell icons fail closed when the high-resolution atlas is unavailable; never use
+            // their procedural geometry as a visible fallback.
+                MinecraftIconRenderer.renderShell(graphics, key, bounds, resolvedState, tint, shellIconAtlas);
+                return;
+            }
+            MinecraftIconRenderer.renderLegacy(graphics, key, bounds, resolvedState, tint, iconAtlas);
+            return;
+        }
+        MinecraftIconRenderer.renderLegacy(graphics, key, bounds, resolvedState, tint, iconAtlas);
+    }
+
+    public synchronized boolean renderShellSurface(GuiGraphicsExtractor graphics, UiRect bounds,
+                                                    double radius, UiColor color, ShellSurfaceKind kind) {
+        return renderShellSurface(graphics, bounds, radius, 1, color, kind);
+    }
+
+    public synchronized boolean renderShellSurface(GuiGraphicsExtractor graphics, UiRect bounds,
+                                                    double radius, double width, UiColor color,
+                                                    ShellSurfaceKind kind) {
+        if (!shellSurfaceResourcesReady() || kind == null) return false;
+        return switch (kind) {
+            case FILL -> MinecraftShellSurfaceRenderer.fill(graphics, shellSurfaces, bounds, radius, color);
+            case BORDER -> MinecraftShellSurfaceRenderer.border(graphics, shellSurfaces, bounds, radius, width, color);
+            case SHADOW -> MinecraftShellSurfaceRenderer.shadow(graphics, shellSurfaces, bounds, radius, color);
+        };
+    }
+
+    public synchronized boolean renderShellGradient(GuiGraphicsExtractor graphics, UiRect bounds,
+                                                     double radius, UiColor top, UiColor bottom) {
+        return shellSurfaceResourcesReady()
+                && MinecraftShellSurfaceRenderer.gradient(graphics, shellSurfaces, bounds, radius, top, bottom);
     }
 
     @Override
@@ -177,5 +245,7 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
         glyphTextures = null;
         typography = null;
         iconAtlas = null;
+        shellIconAtlas = null;
+        shellSurfaces = null;
     }
 }

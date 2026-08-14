@@ -1,6 +1,10 @@
 package io.github.gyai.projects.minecraft.adapter.typography;
 
 import io.github.gyai.projects.ui.runtime.typography.FontCatalog;
+import io.github.gyai.projects.ui.runtime.UiFontFamilyRole;
+import io.github.gyai.projects.ui.runtime.UiFontWeight;
+import io.github.gyai.projects.ui.runtime.typography.FontKey;
+import io.github.gyai.projects.ui.runtime.typography.FontStyle;
 import io.github.gyai.projects.ui.runtime.typography.TypographyRuntime;
 
 import java.io.IOException;
@@ -61,6 +65,22 @@ public final class MinecraftTypographyResources implements AutoCloseable {
     public synchronized StbGlyphAtlas atlas() { return requireReady().atlas; }
     public synchronized MinecraftCustomTextRenderer renderer() { return requireReady().renderer; }
     public synchronized TypographyRuntime runtime() { return runtime; }
+
+    /**
+     * The Client Shell gate is stricter than a non-null runtime: every frozen Inter weight and
+     * every Noto Sans CJK fallback face must be present in the STB registry. This prevents a
+     * shell frame from quietly delegating visible text to Minecraft Font.
+     */
+    public synchronized boolean shellTypographyReady() {
+        if (registry == null || atlas == null || renderer == null) return false;
+        for (UiFontWeight weight : UiFontWeight.values()) {
+            if (!registry.hasFace(new FontKey("projects:inter", UiFontFamilyRole.UI_SANS,
+                    weight, FontStyle.NORMAL))) return false;
+            if (!registry.hasFace(new FontKey("projects:noto-sans-cjk-jp", UiFontFamilyRole.UI_SANS,
+                    weight, FontStyle.NORMAL))) return false;
+        }
+        return true;
+    }
 
     @Override
     public synchronized void close() {

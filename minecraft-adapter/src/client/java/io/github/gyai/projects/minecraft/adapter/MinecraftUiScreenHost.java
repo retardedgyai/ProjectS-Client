@@ -53,6 +53,11 @@ public class MinecraftUiScreenHost extends Screen {
     public final UiInputRouter uiInput() { return input; }
     public final UiTheme uiTheme() { return theme; }
 
+    /** Existing hosts remain on the legacy renderer unless they explicitly opt into the Shell. */
+    protected MinecraftUiRenderProfile uiRenderProfile() {
+        return MinecraftUiRenderProfile.LEGACY;
+    }
+
     public final void setUiTheme(UiTheme nextTheme) {
         if (nextTheme == null) throw new NullPointerException("theme");
         theme = nextTheme;
@@ -98,7 +103,7 @@ public class MinecraftUiScreenHost extends Screen {
         UiDrawList drawList = new UiDrawList();
         tree.render(drawList, theme);
         new MinecraftUiRenderBackend(graphics, font,
-                MinecraftUiRuntimeResources.currentOrNull()).render(drawList);
+                MinecraftUiRuntimeResources.currentOrNull(), uiRenderProfile()).render(drawList);
         super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
     }
 

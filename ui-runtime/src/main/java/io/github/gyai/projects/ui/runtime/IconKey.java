@@ -32,6 +32,27 @@ public record IconKey(String namespace, String path) {
     public static final IconKey LIGHT = of("projects:light");
     public static final IconKey DARK = of("projects:dark");
 
+    /** Semantic Client Shell icons. These live in a separate high-resolution atlas. */
+    public static final IconKey BRAND = of("projects:brand");
+    public static final IconKey HOME = of("projects:home");
+    public static final IconKey LIBRARY = of("projects:library");
+    public static final IconKey SLIDERS = of("projects:sliders");
+    public static final IconKey CHEVRON_RIGHT = of("projects:chevron-right");
+    public static final IconKey CHEVRON_DOWN = of("projects:chevron-down");
+    public static final IconKey ARROW_RIGHT = of("projects:arrow-right");
+    public static final IconKey MONITOR = of("projects:monitor");
+    public static final IconKey SERVER = of("projects:server");
+    public static final IconKey CHECK = of("projects:check");
+    public static final IconKey LOADER = of("projects:loader");
+    public static final IconKey RETRY = of("projects:retry");
+    public static final IconKey WARNING = of("projects:warning");
+    public static final IconKey EYE = of("projects:eye");
+    public static final IconKey SPARKLE = of("projects:sparkle");
+    public static final IconKey INFO = of("projects:info");
+    public static final IconKey SHIELD = of("projects:shield");
+    public static final IconKey LAYERS = of("projects:layers");
+    public static final IconKey KEYBOARD = of("projects:keyboard");
+
     private static final List<IconKey> REQUIRED = List.of(
             SELECT, MOVE, ROTATE, SCALE,
             SHAPE, MOTION, PHASE, TRAIL,
@@ -41,6 +62,19 @@ public record IconKey(String namespace, String path) {
             SEARCH, SETTINGS, CLOSE,
             TIMELINE, PARTICLE, APPEARANCE, INSPECTOR,
             LIGHT, DARK);
+
+    /** Frozen order of the 21 generated Client Shell atlas cells. */
+    private static final List<IconKey> SHELL_REQUIRED = List.of(
+            BRAND, HOME, LIBRARY, SLIDERS,
+            CHEVRON_RIGHT, CHEVRON_DOWN, ARROW_RIGHT, PLAY,
+            MONITOR, SERVER, CHECK, LOADER,
+            CLOSE, RETRY, WARNING, EYE,
+            SPARKLE, INFO, SHIELD, LAYERS, KEYBOARD);
+
+    private static final List<IconKey> REGISTERED = java.util.stream.Stream.concat(
+                    REQUIRED.stream(), SHELL_REQUIRED.stream())
+            .distinct()
+            .toList();
 
     public IconKey {
         if (namespace == null || path == null || namespace.isBlank() || path.isBlank()
@@ -64,8 +98,16 @@ public record IconKey(String namespace, String path) {
     /** Descriptive alias for callers that do not use the shorter {@link #required()} name. */
     public static List<IconKey> requiredKeys() { return REQUIRED; }
 
-    /** Enum-like snapshot for integrations that prefer array iteration. */
+    /** Legacy enum-like snapshot; Studio callers keep the original 27-key contract. */
     public static IconKey[] values() { return REQUIRED.toArray(IconKey[]::new); }
 
+    /** Stable snapshot of Studio and Client Shell semantic keys. */
+    public static List<IconKey> registered() { return REGISTERED; }
+
+    public static List<IconKey> shellRequired() { return SHELL_REQUIRED; }
+
+    public static List<IconKey> shellRequiredKeys() { return SHELL_REQUIRED; }
+
+    /** Legacy alias retained for integrations that predate the Shell catalog. */
     public static IconKey[] registeredValues() { return values(); }
 }

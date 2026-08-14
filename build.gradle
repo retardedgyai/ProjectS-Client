@@ -380,7 +380,9 @@ tasks.register('verifyRuntimeResourceManifest') {
                 'assets/projects_client/licenses/fonts/',
                 'assets/projects_client/licenses/icons/',
                 'assets/projects_client/licenses/runtime-resource-manifest.json',
-                'assets/projects_client/textures/ui/studio_icons_24.png'
+                'assets/projects_client/textures/ui/studio_icons_24.png',
+                'assets/projects_client/textures/ui/shell_icons_96.png',
+                'assets/projects_client/textures/ui/shell_surface_masks_4x.png'
         ]
         def isRuntimeResource = { String entry ->
             def logical = entry.substring(entry.lastIndexOf('!') + 1)
@@ -408,8 +410,16 @@ tasks.register('verifyRuntimeResourceManifest') {
                 'assets/projects_client/licenses/fonts/OFL-1.1-JetBrainsMono-2.304.txt',
                 'assets/projects_client/licenses/fonts/OFL-1.1-NotoSansCJK-2.004.txt',
                 'assets/projects_client/licenses/icons/manifest.json',
+                'assets/projects_client/licenses/icons/shell-manifest.json',
                 'assets/projects_client/licenses/runtime-resource-manifest.json',
-                'assets/projects_client/textures/ui/studio_icons_24.png'
+                'assets/projects_client/textures/ui/studio_icons_24.png',
+                'assets/projects_client/textures/ui/shell_icons_96.png',
+                'assets/projects_client/textures/ui/shell_surface_masks_4x.png',
+                'assets/projects_client/fonts/inter/Inter-Regular.ttf',
+                'assets/projects_client/fonts/inter/Inter-Medium.ttf',
+                'assets/projects_client/fonts/inter/Inter-SemiBold.ttf',
+                'assets/projects_client/fonts/inter/Inter-Bold.ttf',
+                'assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf'
         ]
         requiredResources.each { path ->
             def matches = resources.findAll { logical(it) == path }
@@ -420,11 +430,19 @@ tasks.register('verifyRuntimeResourceManifest') {
             outer.getInputStream(outer.getEntry(adapterPath)).bytes
         }
         byte[] atlasBytes = null
+        byte[] shellAtlasBytes = null
+        byte[] shellSurfaceBytes = null
         byte[] runtimeManifestBytes = null
         new java.util.zip.ZipInputStream(new ByteArrayInputStream(adapterBytes)).withCloseable { nested ->
             java.util.zip.ZipEntry entry
             while ((entry = nested.nextEntry) != null) {
                 if (entry.name == atlasLogicalPath) atlasBytes = nested.readAllBytes()
+                if (entry.name == 'assets/projects_client/textures/ui/shell_icons_96.png') {
+                    shellAtlasBytes = nested.readAllBytes()
+                }
+                if (entry.name == 'assets/projects_client/textures/ui/shell_surface_masks_4x.png') {
+                    shellSurfaceBytes = nested.readAllBytes()
+                }
                 if (entry.name == 'assets/projects_client/licenses/runtime-resource-manifest.json') {
                     runtimeManifestBytes = nested.readAllBytes()
                 }
@@ -445,9 +463,30 @@ tasks.register('verifyRuntimeResourceManifest') {
                 .contains('"atlasSha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326"')) {
             throw new GradleException('Runtime resource manifest atlas SHA-256 mismatch')
         }
+        if (shellAtlasBytes == null || shellSurfaceBytes == null) {
+            throw new GradleException('Client Shell atlas resources are missing from the adapter nested JAR')
+        }
+        def shellAtlasImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(shellAtlasBytes))
+        if (shellAtlasImage == null || shellAtlasImage.width != 576 || shellAtlasImage.height != 384) {
+            throw new GradleException("Shell icon atlas dimensions must be 576x384, found ${shellAtlasImage?.width}x${shellAtlasImage?.height}")
+        }
+        def shellSurfaceImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(shellSurfaceBytes))
+        if (shellSurfaceImage == null || shellSurfaceImage.width != 3200 || shellSurfaceImage.height != 320) {
+            throw new GradleException("Shell surface mask dimensions must be 3200x320, found ${shellSurfaceImage?.width}x${shellSurfaceImage?.height}")
+        }
+        def shellAtlasHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(shellAtlasBytes).collect { String.format('%02X', it) }.join()
+        def shellSurfaceHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(shellSurfaceBytes).collect { String.format('%02X', it) }.join()
+        if (shellAtlasHash != '5AEDA700FFEE2909446DB9C6A1ADC7EA678FF40B478EB81AD2A62D1EFD360EC2'
+                || shellSurfaceHash != 'B4D0C2F1CE31B41DFB6080D3873E1F4CC6EBA0D2FFB04C2B4668134323BFD81A') {
+            throw new GradleException("Client Shell asset hash mismatch: icon=${shellAtlasHash} surface=${shellSurfaceHash}")
+        }
         def devtoolsLeak = devtoolsEntries.findAll { isRuntimeResource(it) }
         if (!devtoolsLeak.isEmpty()) throw new GradleException("projects_devtools contains runtime resources: ${devtoolsLeak}")
         logger.lifecycle("RUNTIME_RESOURCE_MANIFEST_PASS: fonts=${fontFiles.size()} resources=${resources.size()} "
-                + "owner=projects_client nestedAdapter=1 devtoolsRuntimeResources=0 duplicates=0 atlas=192x96 sha256=${atlasHash}")
+                + "owner=projects_client nestedAdapter=1 devtoolsRuntimeResources=0 duplicates=0 "
+                + "studioAtlas=192x96 sha256=${atlasHash} shellAtlas=576x384 sha256=${shellAtlasHash} "
+                + "shellSurfaces=3200x320 sha256=${shellSurfaceHash}")
     }
 }

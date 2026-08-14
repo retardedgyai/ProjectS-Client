@@ -13,12 +13,14 @@ import java.util.Set;
 public final class IconRuntimeFocusedTest {
     public static void main(String[] args) {
         catalogAndDeterminism();
+        shellCatalogAndDeterminism();
         geometryAndUvBounds();
         stateTintAndMetrics();
         missingFallback();
         boundedReloadableCache();
         pureRenderDispatch();
-        System.out.println("ICON_RUNTIME_TEST_PASS: catalog geometry uv states fallback cache reload pixel-snap purity");
+        legacySharedIconDispatch();
+        System.out.println("ICON_RUNTIME_TEST_PASS: studio-shell catalogs geometry uv states fallback cache reload pixel-snap purity legacy-shared-dispatch");
     }
 
     private static void catalogAndDeterminism() {
@@ -55,6 +57,42 @@ public final class IconRuntimeFocusedTest {
         IconAtlasRegion cell = IconAtlasRegion.cell(7, 24, 8, 4);
         check(cell.equals(IconAtlasRegion.cell(7, 24, 8, 4)), "deterministic cell UV");
         check(IconAtlasRegion.tryCell(32, 24, 8, 4).isEmpty(), "atlas overflow rejected");
+    }
+
+    private static void shellCatalogAndDeterminism() {
+        check(ShellIconCatalog.validate().isEmpty(), "shell catalog validates");
+        check(ShellIconCatalog.keys().equals(List.of(
+                IconKey.BRAND, IconKey.HOME, IconKey.LIBRARY, IconKey.SLIDERS,
+                IconKey.CHEVRON_RIGHT, IconKey.CHEVRON_DOWN, IconKey.ARROW_RIGHT, IconKey.PLAY,
+                IconKey.MONITOR, IconKey.SERVER, IconKey.CHECK, IconKey.LOADER,
+                IconKey.CLOSE, IconKey.RETRY, IconKey.WARNING, IconKey.EYE,
+                IconKey.SPARKLE, IconKey.INFO, IconKey.SHIELD, IconKey.LAYERS,
+                IconKey.KEYBOARD)), "shell catalog order");
+        check(ShellIconCatalog.keys().size() == 21, "shell catalog count");
+        check(IconKey.registered().size() == 46, "registered Studio and shell key count");
+        check(IconCatalog.shellFingerprint().equals(IconCatalog.shellFingerprint()),
+                "deterministic shell catalog fingerprint");
+        check(ShellIconCatalog.ATLAS_WIDTH == 576 && ShellIconCatalog.ATLAS_HEIGHT == 384,
+                "shell atlas dimensions");
+        for (IconKey key : ShellIconCatalog.keys()) {
+            check(IconCatalog.contains(key), "semantic shell key is registered: " + key.id());
+            IconDefinition definition = ShellIconCatalog.definition(key);
+            check(definition.isAtlasBacked(),
+                    "shell key resolves to atlas: " + key.id());
+            check(definition.atlasRegion().matchesCellSize(ShellIconCatalog.ATLAS_CELL_SIZE),
+                    "shell atlas cell size: " + key.id());
+        }
+        // PLAY and CLOSE deliberately share identities with the legacy Studio catalog.  The
+        // adapter's Shell profile selects these explicit definitions instead of silently mixing
+        // the two atlas families.
+        check(!IconCatalog.resolve(IconKey.PLAY).definition().isAtlasBacked(),
+                "legacy PLAY resolution remains procedural");
+        check(ShellIconCatalog.definition(IconKey.PLAY).isAtlasBacked(),
+                "Shell PLAY resolution is atlas-backed");
+        check(!IconCatalog.resolve(IconKey.CLOSE).definition().isAtlasBacked(),
+                "legacy CLOSE resolution remains procedural");
+        check(ShellIconCatalog.definition(IconKey.CLOSE).isAtlasBacked(),
+                "Shell CLOSE resolution is atlas-backed");
     }
 
     private static void stateTintAndMetrics() {
@@ -122,6 +160,33 @@ public final class IconRuntimeFocusedTest {
         IconRenderer.render(atlasPlan, atlasTarget);
         check(atlasPlan.mode() == IconRenderMode.ATLAS && atlasTarget.atlasCalls == 1,
                 "atlas dispatch is adapter target controlled");
+    }
+
+    private static void legacySharedIconDispatch() {
+        for (IconKey key : List.of(IconKey.PLAY, IconKey.CLOSE)) {
+            IconRenderPlan legacyPlan = IconRenderer.plan(key,
+                    new UiRect(0, 0, 24, 24), IconState.NORMAL,
+                    UiColor.rgb(255, 255, 255), false);
+            check(legacyPlan.mode() == IconRenderMode.PROCEDURAL,
+                    "shared legacy icon remains procedural: " + key.id());
+            check(legacyPlan.definition() == IconCatalog.definition(key),
+                    "shared legacy icon resolves through Studio definition: " + key.id());
+            check(legacyPlan.definition() != ShellIconCatalog.definition(key),
+                    "shared legacy icon does not use Shell definition: " + key.id());
+
+            RecordingTarget legacyTarget = new RecordingTarget(false);
+            IconRenderer.render(legacyPlan, legacyTarget);
+            check(legacyTarget.lines > 0,
+                    "shared legacy icon dispatches procedural geometry: " + key.id());
+
+            IconRenderPlan shellPlan = IconRenderer.planForDefinition(
+                    ShellIconCatalog.definition(key), key, new UiRect(0, 0, 24, 24),
+                    IconState.NORMAL, UiColor.rgb(255, 255, 255), true);
+            RecordingTarget shellTarget = new RecordingTarget(true);
+            IconRenderer.render(shellPlan, shellTarget);
+            check(shellPlan.mode() == IconRenderMode.ATLAS && shellTarget.atlasCalls == 1,
+                    "Shell profile selects atlas definition: " + key.id());
+        }
     }
 
     private static final class TrackedResource implements AutoCloseable {

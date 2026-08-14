@@ -19,5 +19,22 @@
     "proceduralFallback": true,
     "licenseManifest": "assets/projects_client/licenses/icons/manifest.json"
   },
+  "clientShell": {
+    "iconAtlas": "assets/projects_client/textures/ui/shell_icons_96.png",
+    "iconAtlasDimensions": [576, 384],
+    "iconAtlasCellSize": 96,
+    "iconAtlasColumns": 6,
+    "iconAtlasRows": 4,
+    "iconAtlasKeys": ["projects:brand", "projects:home", "projects:library", "projects:sliders", "projects:chevron-right", "projects:chevron-down", "projects:arrow-right", "projects:play", "projects:monitor", "projects:server", "projects:check", "projects:loader", "projects:close", "projects:retry", "projects:warning", "projects:eye", "projects:sparkle", "projects:info", "projects:shield", "projects:layers", "projects:keyboard"],
+    "iconAtlasSha256": "5aeda700ffee2909446db9c6a1adc7ea678ff40b478eb81ad2a62d1efd360ec2",
+    "surfaceMasks": "assets/projects_client/textures/ui/shell_surface_masks_4x.png",
+    "surfaceMaskDimensions": [3200, 320],
+    "surfaceMaskTileSize": 320,
+    "surfaceMaskColumns": 10,
+    "surfaceMaskBorderWidths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "surfaceMaskSha256": "b4d0c2f1ce31b41dfb6080d3873e1f4cc6eba0d2ffb04c2b4668134323bfd81a",
+    "offlineAntialiasedAlphaResources": true,
+    "licenseManifest": "assets/projects_client/licenses/icons/shell-manifest.json"
+  },
   "resourceReload": "io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources"
 }

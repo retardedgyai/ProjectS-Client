@@ -49,15 +49,21 @@ public final class IconCatalog {
 
     public static List<IconKey> requiredKeys() { return IconKey.required(); }
 
-    public static boolean contains(IconKey key) { return key != null && BY_KEY.containsKey(key); }
+    public static boolean contains(IconKey key) {
+        return key != null && (BY_KEY.containsKey(key) || ShellIconCatalog.contains(key));
+    }
 
     public static Optional<IconDefinition> find(IconKey key) {
-        return key == null ? Optional.empty() : Optional.ofNullable(BY_KEY.get(key));
+        if (key == null) return Optional.empty();
+        IconDefinition definition = BY_KEY.get(key);
+        return definition != null ? Optional.of(definition) : ShellIconCatalog.find(key);
     }
 
     /** Returns the visible missing marker for unknown IDs instead of returning null. */
     public static IconDefinition definition(IconKey key) {
-        return key == null ? MISSING : BY_KEY.getOrDefault(key, MISSING);
+        if (key == null) return MISSING;
+        IconDefinition definition = BY_KEY.get(key);
+        return definition != null ? definition : ShellIconCatalog.find(key).orElse(MISSING);
     }
 
     public static IconSpec spec(IconKey key) { return definition(key).spec(); }
@@ -94,6 +100,7 @@ public final class IconCatalog {
             }
         }
         for (IconKey key : required) if (!seen.contains(key)) errors.add("missing key: " + key.id());
+        errors.addAll(ShellIconCatalog.validate());
         return List.copyOf(errors);
     }
 
@@ -103,6 +110,13 @@ public final class IconCatalog {
         for (IconDefinition definition : DEFINITIONS) result.append(definition.fingerprint()).append(';');
         return result.toString();
     }
+
+    /** Stable shell-only view; Studio callers should continue to use {@link #all()}. */
+    public static List<IconDefinition> shellDefinitions() { return ShellIconCatalog.definitions(); }
+
+    public static List<IconKey> shellKeys() { return ShellIconCatalog.keys(); }
+
+    public static String shellFingerprint() { return ShellIconCatalog.fingerprint(); }
 
     private static List<IconDefinition> buildDefinitions() {
         List<IconDefinition> definitions = List.of(

@@ -62,12 +62,33 @@ public final class IconRenderer {
         if (key == null || bounds == null || state == null || tint == null) {
             throw new IllegalArgumentException("key/bounds/state/tint");
         }
-        IconResolution resolution = IconCatalog.resolve(key);
+        return planForDefinition(IconCatalog.definition(key), key, bounds, state, tint, atlasAvailable);
+    }
+
+    /**
+     * Builds an adapter-ready plan from an explicitly selected definition.  The normal Studio
+     * resolver remains unchanged; the Shell adapter uses this seam for shared keys such as PLAY
+     * and CLOSE, whose legacy definitions intentionally live in the Studio catalog as well.
+     */
+    public static IconRenderPlan planForDefinition(
+            IconDefinition definition,
+            io.github.gyai.projects.ui.runtime.IconKey key,
+            UiRect bounds,
+            IconState state,
+            io.github.gyai.projects.ui.runtime.UiColor tint,
+            boolean atlasAvailable
+    ) {
+        if (definition == null || key == null || bounds == null || state == null || tint == null) {
+            throw new IllegalArgumentException("definition/key/bounds/state/tint");
+        }
+        if (!definition.key().equals(key)) throw new IllegalArgumentException("definition/key mismatch");
         double size = Math.min(bounds.width(), bounds.height());
         if (size <= 0) size = 1.0;
         IconRenderMetrics metrics = IconRenderMetrics.forSize(size, 1, true);
         UiRect snappedBounds = metrics.snap(bounds);
         IconStyle style = new IconStyle(state, tint, 1.0, metrics.effectiveStroke(), true);
+        IconResolution resolution = new IconResolution(key, definition,
+                definition.key().equals(IconCatalog.MISSING_KEY));
         IconRenderMode mode = resolution.missing()
                 ? IconRenderMode.MISSING_FALLBACK
                 : resolution.definition().isAtlasBacked()
