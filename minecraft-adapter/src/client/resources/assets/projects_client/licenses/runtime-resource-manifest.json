@@ -6,7 +6,7 @@
   "excluded_from": ["projects-devtools"],
   "fonts": {
     "uiSans": "assets/projects_client/fonts/inter",
-    "japaneseFallback": "assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf",
+    "japaneseFallback": "assets/projects_client/fonts/noto-sans-cjk-jp/notosanscjkjp-vf.ttf",
     "technicalMono": "assets/projects_client/fonts/jetbrains-mono",
     "licenseManifest": "assets/projects_client/licenses/fonts/typography-font-manifest.json"
   },

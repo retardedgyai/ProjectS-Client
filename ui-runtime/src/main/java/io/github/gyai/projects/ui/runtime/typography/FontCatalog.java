@@ -33,19 +33,19 @@ public final class FontCatalog {
         for (UiFontWeight weight : UiFontWeight.values()) {
             builder.add(FontFaceMetadata.bundled(new FontKey("projects:inter", UiFontFamilyRole.UI_SANS,
                             weight, FontStyle.NORMAL), "Inter " + weight,
-                    "assets/projects_client/fonts/inter/Inter-" + weightName(weight) + ".ttf", interUrl,
+                    "assets/projects_client/fonts/inter/inter-" + weightName(weight) + ".ttf", interUrl,
                     "OFL-1.1-Inter-4.1", latin, 0));
             builder.add(FontFaceMetadata.bundled(new FontKey("projects:jetbrains-mono", UiFontFamilyRole.TECHNICAL_MONO,
                             weight, FontStyle.NORMAL), "JetBrains Mono " + weight,
-                    "assets/projects_client/fonts/jetbrains-mono/JetBrainsMono-" + weightName(weight) + ".ttf",
+                    "assets/projects_client/fonts/jetbrains-mono/jetbrainsmono-" + weightName(weight) + ".ttf",
                     monoUrl, "OFL-1.1-JetBrainsMono-2.304", latin, 0));
             builder.add(FontFaceMetadata.bundled(new FontKey("projects:noto-sans-cjk-jp", UiFontFamilyRole.UI_SANS,
                             weight, FontStyle.NORMAL), "Noto Sans CJK JP " + weight,
-                    "assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf", notoUrl,
+                    "assets/projects_client/fonts/noto-sans-cjk-jp/notosanscjkjp-vf.ttf", notoUrl,
                     "OFL-1.1-NotoSansCJK-2.004", cjk, 100));
             builder.add(FontFaceMetadata.bundled(new FontKey("projects:noto-sans-cjk-jp", UiFontFamilyRole.TECHNICAL_MONO,
                             weight, FontStyle.NORMAL), "Noto Sans CJK JP " + weight + " fallback",
-                    "assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf", notoUrl,
+                    "assets/projects_client/fonts/noto-sans-cjk-jp/notosanscjkjp-vf.ttf", notoUrl,
                     "OFL-1.1-NotoSansCJK-2.004", cjk, 100));
         }
         return builder.build();
@@ -98,10 +98,10 @@ public final class FontCatalog {
 
     private static String weightName(UiFontWeight weight) {
         return switch (weight) {
-            case NORMAL -> "Regular";
-            case MEDIUM -> "Medium";
-            case SEMIBOLD -> "SemiBold";
-            case BOLD -> "Bold";
+            case NORMAL -> "regular";
+            case MEDIUM -> "medium";
+            case SEMIBOLD -> "semibold";
+            case BOLD -> "bold";
         };
     }
 

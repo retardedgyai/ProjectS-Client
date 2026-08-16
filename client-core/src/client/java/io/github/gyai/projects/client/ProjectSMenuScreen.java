@@ -1,8 +1,11 @@
 package io.github.gyai.projects.client;
 
+import com.mojang.logging.LogUtils;
 import io.github.gyai.projects.client.shell.ClientShellModel;
 import io.github.gyai.projects.client.shell.ClientShellNarration;
 import io.github.gyai.projects.client.shell.SampleClientShellDataSource;
+import io.github.gyai.projects.client.menu.ProjectSMenuExtension;
+import io.github.gyai.projects.client.menu.ProjectSMenuExtensions;
 import io.github.gyai.projects.minecraft.adapter.MinecraftUiRenderProfile;
 import io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources;
 import io.github.gyai.projects.minecraft.adapter.MinecraftUiScreenHost;
@@ -16,9 +19,11 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /** ProjectS Client Shell; the legacy parent constructor remains the inventory entry signature. */
 public final class ProjectSMenuScreen extends MinecraftUiScreenHost {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private final Screen parent;
     private final ClientShellRoot shell;
     private final ClientShellNarration narration = new ClientShellNarration();
@@ -28,7 +33,25 @@ public final class ProjectSMenuScreen extends MinecraftUiScreenHost {
     }
 
     static void openIfReady(Minecraft client, Screen parent) {
-        if (client == null || !shellVisualsReady()) return;
+        if (client == null) return;
+        ProjectSMenuExtension extension = ProjectSMenuExtensions.entries().stream()
+                .filter(entry -> entry.enabled().getAsBoolean())
+                .findFirst()
+                .orElse(null);
+        if (extension != null) {
+            extension.action().accept(parent);
+            return;
+        }
+        MinecraftUiRuntimeResources resources = MinecraftUiRuntimeResources.currentOrNull();
+        if (resources == null) {
+            LOGGER.warn("ProjectS menu did not open: UI runtime resources are unavailable");
+            return;
+        }
+        if (!resources.clientShellVisualsReady()) {
+            LOGGER.warn("ProjectS menu did not open: {}",
+                    resources.clientShellReadinessReport());
+            return;
+        }
         client.setScreen(new ProjectSMenuScreen(parent));
     }
 

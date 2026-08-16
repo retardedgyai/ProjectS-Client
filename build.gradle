@@ -415,11 +415,11 @@ tasks.register('verifyRuntimeResourceManifest') {
                 'assets/projects_client/textures/ui/studio_icons_24.png',
                 'assets/projects_client/textures/ui/shell_icons_96.png',
                 'assets/projects_client/textures/ui/shell_surface_masks_4x.png',
-                'assets/projects_client/fonts/inter/Inter-Regular.ttf',
-                'assets/projects_client/fonts/inter/Inter-Medium.ttf',
-                'assets/projects_client/fonts/inter/Inter-SemiBold.ttf',
-                'assets/projects_client/fonts/inter/Inter-Bold.ttf',
-                'assets/projects_client/fonts/noto-sans-cjk-jp/NotoSansCJKjp-VF.ttf'
+                'assets/projects_client/fonts/inter/inter-regular.ttf',
+                'assets/projects_client/fonts/inter/inter-medium.ttf',
+                'assets/projects_client/fonts/inter/inter-semibold.ttf',
+                'assets/projects_client/fonts/inter/inter-bold.ttf',
+                'assets/projects_client/fonts/noto-sans-cjk-jp/notosanscjkjp-vf.ttf'
         ]
         requiredResources.each { path ->
             def matches = resources.findAll { logical(it) == path }

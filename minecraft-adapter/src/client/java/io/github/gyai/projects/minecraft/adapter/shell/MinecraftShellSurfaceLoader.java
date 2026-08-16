@@ -70,7 +70,7 @@ public final class MinecraftShellSurfaceLoader {
                 && compact.contains("\"sourceradius\":30")
                 && compact.contains("\"shadowblurradius\":8")
                 && compact.contains("\"borderwidths\":[1,2,3,4,5,6,7,8]")
-                && compact.contains("\"runtimedownloads\":false")
+                && compact.contains("\"runtime_downloads\":false")
                 && compact.contains("\"thirdpartyartwork\":false");
     }
 

@@ -1,5 +1,6 @@
 package io.github.gyai.projects.minecraft.adapter;
 
+import com.mojang.logging.LogUtils;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasBinding;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasDescriptor;
 import io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAtlasStore;
@@ -28,6 +29,7 @@ import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.io.IOException;
+import org.slf4j.Logger;
 
 import io.github.gyai.projects.ui.runtime.icon.IconState;
 
@@ -37,6 +39,7 @@ import io.github.gyai.projects.ui.runtime.icon.IconState;
  * invalidate every bounded runtime cache in one place.
  */
 public final class MinecraftUiRuntimeResources implements AutoCloseable {
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final TextLayoutOptions UNBOUNDED = TextLayoutOptions.unbounded();
     private static MinecraftUiRuntimeResources current;
     private static boolean initializationAttempted;
@@ -65,7 +68,8 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
     /** Returns the singleton when Minecraft resources are available; never allocates per frame. */
     public static synchronized MinecraftUiRuntimeResources currentOrNull() {
         if (current != null && !current.closed) return current;
-        if (initializationAttempted) return null;
+        // Resource reload can run before the Minecraft texture state is fully usable.
+        // Keep the visual gate fail-closed, but allow a later menu click to recover.
         initializationAttempted = true;
         try {
             Minecraft client = Minecraft.getInstance();
@@ -73,7 +77,8 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
             current = new MinecraftUiRuntimeResources(
                     client.getTextureManager(), client.getResourceManager());
             return current;
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException exception) {
+            LOGGER.warn("ProjectS UI runtime resource initialization failed", exception);
             current = null;
             return null;
         }
@@ -91,7 +96,8 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
             } else {
                 current.reload(resourceManager);
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException exception) {
+            LOGGER.warn("ProjectS UI runtime resource reload failed", exception);
             if (current != null) current.close();
             current = null;
         }
@@ -144,6 +150,14 @@ public final class MinecraftUiRuntimeResources implements AutoCloseable {
                 && typography.shellTypographyReady()
                 && shellIconAtlas != null && shellSurfaces != null
                 && ShellIconCatalog.validate().isEmpty();
+    }
+
+    public synchronized String clientShellReadinessReport() {
+        return "typography=" + (typography != null && typography.shellTypographyReady())
+                + ", glyphTextures=" + (glyphTextures != null)
+                + ", shellIcons=" + (shellIconAtlas != null)
+                + ", shellSurfaces=" + (shellSurfaces != null)
+                + ", catalog=" + ShellIconCatalog.validate().isEmpty();
     }
     public synchronized TypographyRuntime typographyRuntime() {
         return typography == null ? null : typography.runtime();
