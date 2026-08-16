@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "projects_devtools",
+  "version": "${version}",
+  "name": "ProjectS DevTools",
+  "description": "Optional ProjectS developer editor and diagnostics surfaces.",
+  "authors": ["gyai"],
+  "environment": "client",
+  "entrypoints": { "client": ["io.github.gyai.projects.devtools.ProjectSDevTools"] },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.1.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "projects_client": "0.1.0"
+  }
+}

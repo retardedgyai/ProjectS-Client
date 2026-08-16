@@ -1,63 +1,492 @@
-plugins {
-    id 'net.fabricmc.fabric-loom' version "${loom_version}"
-    id 'maven-publish'
+plugins { id 'base' }
+
+allprojects {
+    group = providers.gradleProperty('maven_group').get()
+    version = providers.gradleProperty('mod_version').get()
 }
 
-version = project.mod_version
-group = project.maven_group
+def lifecycleProjects = [':client-core', ':editor-core', ':devtools', ':ui-runtime', ':minecraft-adapter']
 
-base {
-    archivesName = project.archives_base_name
+// Stage 2 focused entry points. Each delegates to the owning module's non-GUI JavaExec check.
+tasks.register('typographyTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:typographyRuntimeTest', ':minecraft-adapter:typographyAdapterTest'
+}
+tasks.register('themeTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:themeRuntimeTest'
+}
+tasks.register('iconTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:iconRuntimeTest', ':minecraft-adapter:iconAdapterTest'
+}
+tasks.register('componentTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:componentKitTest', ':ui-runtime:uiInputHostTimelineTest', ':minecraft-adapter:componentAdapterTest'
+}
+tasks.register('hostIntegrationTest') {
+    group = 'verification'
+    dependsOn ':ui-runtime:uiInputHostTimelineTest', ':minecraft-adapter:hostAdapterTest'
+}
+tasks.register('uiKitLayoutTest') {
+    group = 'verification'
+    dependsOn ':devtools:projectSUiKitLayoutTest', ':devtools:projectSUiKitV02LayoutTest'
+}
+tasks.register('studioTest') {
+    group = 'verification'
+    dependsOn ':devtools:studioShellLayoutTest', ':minecraft-adapter:studioViewportTest',
+            ':devtools:studioToolInspectorTest', ':devtools:studioTimelineAssetBrowserTest',
+            ':devtools:studioWorkspaceTest'
+}
+tasks.register('verifyUiRuntimePurity') {
+    group = 'verification'
+    dependsOn ':ui-runtime:verifyUiRuntimePurity'
+}
+tasks.register('verifyAdapterBoundary') {
+    group = 'verification'
+    dependsOn ':minecraft-adapter:verifyMinecraftAdapterBoundary', 'verifySourceSetBoundaries'
+}
+tasks.register('verifyArtifactSeparation') {
+    group = 'verification'
+    dependsOn ':client-core:verifyClientCoreArtifact', ':devtools:verifyDevToolsArtifact', 'verifyRuntimeResourceManifest'
+}
+tasks.register('verifyNestedArtifacts') {
+    group = 'verification'
+    dependsOn 'verifyRuntimeArtifactOwnership'
+}
+tasks.register('verifyProtocolGuards') {
+    group = 'verification'
+    dependsOn 'verifyProtocolFixtureParity'
+}
+tasks.register('verifySideEffectGuards') {
+    group = 'verification'
+    dependsOn 'verifyBuildSafety'
 }
 
-loom {
-    splitEnvironmentSourceSets()
-    mods {
-        "projects_client" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
-        }
-    }
+tasks.named('check') {
+    dependsOn lifecycleProjects.collect { "${it}:check" }
+    dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
+            'verifyRuntimeArtifactOwnership', 'verifyRuntimeResourceManifest',
+            'typographyTest', 'themeTest', 'iconTest', 'componentTest', 'uiKitLayoutTest', 'studioTest',
+            'verifyStudioSourcePolicy'
 }
 
-dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-}
-
-processResources {
-    inputs.property "version", project.version
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 25
-    options.encoding = 'UTF-8'
-}
-
-java {
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
+tasks.named('clean') { dependsOn lifecycleProjects.collect { "${it}:clean" } }
 
 tasks.named('build') {
+    dependsOn lifecycleProjects.collect { "${it}:build" }
+    dependsOn 'verifyBuildSafety', 'verifySourceSetBoundaries', 'verifyProtocolFixtureParity',
+            'verifyRuntimeArtifactOwnership', 'verifyRuntimeResourceManifest'
+}
+
+// Deployment remains available, but only by explicitly asking for this task.
+// In particular, no lifecycle task below is allowed to depend on it.
+tasks.register('deployAndStartClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicitly deploys the built client/devtools jars and opens the Minecraft Launcher.'
+    dependsOn ':client-core:build', ':devtools:build'
     doLast {
-        if (!project.hasProperty('skipAutoStart')) {
-            def script = layout.projectDirectory
-                    .file('scripts/deploy-and-start-client.ps1').asFile.absolutePath
-            def process = new ProcessBuilder(
-                    'powershell.exe',
-                    '-NoProfile',
-                    '-ExecutionPolicy', 'Bypass',
-                    '-File', script
-            ).inheritIO().start()
-            if (process.waitFor() != 0) {
-                throw new GradleException('Client mod deployment or Minecraft launch failed.')
+        def script = layout.projectDirectory.file('scripts/deploy-and-start-client.ps1').asFile
+        exec {
+            commandLine 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', script.absolutePath
+        }
+    }
+}
+
+// Compatibility aliases are intentionally explicit and are never lifecycle dependencies.
+tasks.register('deployClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicit compatibility alias for deployAndStartClient.'
+    dependsOn 'deployAndStartClient'
+}
+tasks.register('startClient') {
+    group = 'ProjectS explicit runtime actions'
+    description = 'Explicit compatibility alias for deployAndStartClient.'
+    dependsOn 'deployAndStartClient'
+}
+
+tasks.register('verifyBuildSafety') {
+    group = 'verification'
+    description = 'Verifies build/check dependency graphs contain no runtime execution task.'
+    doLast {
+        def scheduled = gradle.taskGraph.allTasks
+        def executionPrefixes = ['run', 'launch', 'start', 'deploy']
+        def isExecutionTask = { String name ->
+            def normalized = name.toLowerCase(Locale.ROOT)
+            executionPrefixes.any { prefix -> normalized == prefix || normalized.startsWith(prefix) }
+        }
+        def offenders = scheduled.findAll { candidate -> isExecutionTask(candidate.name) }
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Scheduled lifecycle graph contains runtime execution tasks: ${offenders*.path}")
+        }
+        logger.lifecycle("BUILD_SAFETY_PASS: execution-task scan scheduledGraphTasks=${scheduled.size()} "
+                + "executionTasks=0 prefixes=run*/launch*/start*/deploy*")
+    }
+}
+
+def javaSourceFiles = { String directory ->
+    def root = file(directory)
+    root.exists() ? fileTree(root).matching { include '**/*.java' }.files : []
+}
+def forbiddenImport = ~/(?m)^\s*import\s+(net\.minecraft|net\.fabricmc|com\.mojang\.blaze3d|org\.lwjgl|java\.awt)(\.|;)/
+
+tasks.register('verifySourceSetBoundaries') {
+    group = 'verification'
+    description = 'Enforces pure source-set and adapter ownership boundaries.'
+    doLast {
+        def pureSets = [
+                'ui-runtime/src/main/java',
+                'editor-core/src/main/java',
+                'client-core/src/main/java',
+                'devtools/src/main/java'
+        ]
+        pureSets.each { directory ->
+            def offenders = javaSourceFiles(directory).findAll { it.text =~ forbiddenImport }
+            if (!offenders.isEmpty()) {
+                throw new GradleException("Pure source-set boundary failed in ${directory}: ${offenders}")
             }
         }
+        def adapterDescriptor = file('minecraft-adapter/src/main/resources/fabric.mod.json')
+        if (adapterDescriptor.exists()) {
+            throw new GradleException('minecraft-adapter must not own a Fabric mod descriptor or entrypoint')
+        }
+        def newStudioRoot = file('devtools/src/main/java/io/github/gyai/projects/devtools/ui')
+        javaSourceFiles(newStudioRoot.path).each { source ->
+            if (source.text =~ forbiddenImport) {
+                throw new GradleException("New Studio presentation imports a platform API: ${source}")
+            }
+        }
+        def pilotClient = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSUiKitPilotScreen.java')
+        if (pilotClient.isFile()) {
+            def forbiddenStudioClient = ~/(?m)(^\s*import\s+net\.minecraft\.|\b(?:Screen|Widget|ButtonWidget|AbstractWidget|Font|GuiGraphics|DrawContext|GuiGraphicsExtractor)\b|minecraft\.setScreen\s*\()/
+            if (pilotClient.text =~ forbiddenStudioClient) {
+                throw new GradleException("New Studio client directly depends on Minecraft GUI types: ${pilotClient}")
+            }
+        }
+        logger.lifecycle('SOURCE_BOUNDARY_PASS: pure source sets, Studio client boundary and adapter ownership are valid')
+    }
+}
+
+tasks.register('verifyStudioSourcePolicy') {
+    group = 'verification'
+    description = 'Verifies Studio ownership, renderer-neutral presentation and legacy-menu registration.'
+    doLast {
+        def studioRoots = [
+                file('devtools/src/main/java/io/github/gyai/projects/devtools/studio'),
+                file('devtools/src/client/java/io/github/gyai/projects/devtools/studio'),
+                file('minecraft-adapter/src/client/java/io/github/gyai/projects/minecraft/adapter/studio')
+        ]
+        def platformImport = ~/(?m)^\s*import\s+(net\.minecraft|net\.fabricmc|com\.mojang|org\.lwjgl)(\.|;)/
+        def forbiddenVisual = ~/(?s)\b(ButtonWidget|AbstractWidget|Minecraft\s+Font|Slot|Framebuffer|WorldRenderer|RenderTarget|renderBackground|blur)\b/
+        studioRoots.each { root ->
+            if (!root.isDirectory()) throw new GradleException("Studio source root missing: ${root}")
+            fileTree(root).matching { include '**/*.java' }.files.each { source ->
+                if (source.text =~ platformImport) throw new GradleException("Studio source imports platform API: ${source}")
+                if (source.text =~ forbiddenVisual) throw new GradleException("Studio source uses forbidden vanilla/renderer visual dependency: ${source}")
+            }
+        }
+        def screen = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSStudioScreen.java')
+        if (!screen.isFile()) throw new GradleException('ProjectSStudioScreen must be DevTools-owned')
+        def menu = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSDevToolsMenuScreen.java').text
+        ['ProjectS Studio', 'Skill Editor', 'Editor Frontend', 'UI Kit / Stage 1'].each { label ->
+            if (!menu.contains(label)) throw new GradleException("Developer Tools menu entry missing: ${label}")
+        }
+        if (fileTree('minecraft-adapter/src').matching { include '**/fabric.mod.json' }.files) {
+            throw new GradleException('Studio adapter boundary must remain library-only')
+        }
+        if (fileTree('devtools/src/main/java/io/github/gyai/projects/devtools/studio').matching {
+            include '**/*Payload*.java', '**/*Protocol*.java'
+        }.files) {
+            throw new GradleException('Studio presentation must not own protocol/server paths')
+        }
+        logger.lifecycle('STUDIO_SOURCE_POLICY_PASS: DevTools ownership, renderer-neutral chrome, adapter library boundary and feature switch are valid')
+    }
+}
+
+tasks.register('verifyProtocolFixtureParity') {
+    group = 'verification'
+    description = 'Checks that the existing protocol fixture set remains present and readable.'
+    doLast {
+        def required = [
+                'client-core/src/test/resources/protocol/ability-vfx-appearance-v01-catalog.txt',
+                'client-core/src/test/resources/protocol/ability-vfx-validation-v1.txt',
+                'client-core/src/test/resources/protocol/beta-protocol-v1-vectors.json',
+                'client-core/src/test/resources/protocol/fire-elements-server-publisher-v1.json'
+        ]
+        required.each { path ->
+            def fixture = file(path)
+            if (!fixture.isFile() || fixture.length() == 0) {
+                throw new GradleException("Protocol fixture missing or empty: ${path}")
+            }
+        }
+        logger.lifecycle("PROTOCOL_FIXTURE_PASS: ${required.size()} required fixtures are present")
+    }
+}
+
+def collectZipEntries
+collectZipEntries = { byte[] bytes, String prefix, List<String> output ->
+    def input = new java.util.zip.ZipInputStream(new ByteArrayInputStream(bytes))
+    try {
+        java.util.zip.ZipEntry entry
+        while ((entry = input.nextEntry) != null) {
+            if (entry.isDirectory()) continue
+            def name = prefix + entry.name
+            output.add(name)
+            if (entry.name.toLowerCase(Locale.ROOT).endsWith('.jar')) {
+                def nested = new ByteArrayOutputStream()
+                input.transferTo(nested)
+                collectZipEntries(nested.toByteArray(), name + '!', output)
+            }
+        }
+    } finally {
+        input.close()
+    }
+}
+
+tasks.register('verifyRuntimeArtifactOwnership') {
+    group = 'verification'
+    description = 'Verifies nested runtime JAR counts and complete class/resource ownership across client artifacts.'
+    dependsOn ':client-core:jar', ':devtools:jar'
+    doLast {
+        def artifacts = [
+                client: project(':client-core').layout.buildDirectory.file("libs/projects-client-${project.version}.jar").get().asFile,
+                devtools: project(':devtools').layout.buildDirectory.file("libs/projects-devtools-${project.version}.jar").get().asFile
+        ]
+        def runtimeModules = [
+                'ui-runtime': [
+                        jarPrefix: 'ui-runtime-',
+                        classPrefix: 'io/github/gyai/projects/ui/runtime/'
+                ],
+                'minecraft-adapter': [
+                        jarPrefix: 'minecraft-adapter-',
+                        classPrefix: 'io/github/gyai/projects/minecraft/adapter/'
+                ]
+        ]
+        def logicalName = { String entry ->
+            def marker = entry.lastIndexOf('!')
+            marker >= 0 ? entry.substring(marker + 1) : entry
+        }
+        def isClassOrResource = { String entry ->
+            !entry.endsWith('/')
+                    && entry != 'META-INF/MANIFEST.MF'
+                    // Loom injects this synthetic descriptor into every included library;
+                    // it is packaging metadata, not a runtime module resource.
+                    && entry != 'fabric.mod.json'
+                    && !entry.startsWith('META-INF/maven/')
+                    && !entry.endsWith('.SF') && !entry.endsWith('.RSA') && !entry.endsWith('.DSA')
+        }
+        def entriesByArtifact = [:]
+        artifacts.each { label, artifact ->
+            if (!artifact.isFile()) throw new GradleException("Artifact missing: ${artifact}")
+            def entries = new ArrayList<String>()
+            collectZipEntries(artifact.bytes, '', entries)
+            entriesByArtifact[label] = entries
+        }
+
+        def ownedRuntimeEntries = new LinkedHashSet<String>()
+        runtimeModules.each { name, specification ->
+            def nestedPattern = ~/(^|!)META-INF\/jars\/${java.util.regex.Pattern.quote(specification.jarPrefix)}[^\/!]+\.jar$/
+            def clientNested = entriesByArtifact.client.findAll { it ==~ nestedPattern }
+            def devtoolsNested = entriesByArtifact.devtools.findAll { it ==~ nestedPattern }
+            if (clientNested.size() != 1 || clientNested[0].contains('!')) {
+                throw new GradleException("projects_client must contain exactly one ${name} nested JAR, found ${clientNested}")
+            }
+            if (!devtoolsNested.isEmpty()) {
+                throw new GradleException("projects_devtools must contain zero ${name} nested JARs, found ${devtoolsNested}")
+            }
+
+            String nestedPath = clientNested[0]
+            def nestedContents = entriesByArtifact.client.findAll { it.startsWith(nestedPath + '!') }
+                    .collect { logicalName(it) }
+                    .findAll { isClassOrResource(it) }
+            if (nestedContents.isEmpty()) throw new GradleException("${name} nested JAR is empty")
+            def duplicateNested = nestedContents.groupBy { it }.findAll { _, values -> values.size() > 1 }
+            if (!duplicateNested.isEmpty()) {
+                throw new GradleException("${name} nested JAR duplicates class/resource entries: ${duplicateNested.keySet()}")
+            }
+            def classes = nestedContents.findAll { it.endsWith('.class') }
+            if (classes.isEmpty() || !classes.every { it.startsWith(specification.classPrefix) }) {
+                throw new GradleException("${name} nested JAR class ownership is outside ${specification.classPrefix}")
+            }
+            def outsideNestedClasses = entriesByArtifact.client.findAll { entry ->
+                def logical = logicalName(entry)
+                isClassOrResource(logical) && logical.startsWith(specification.classPrefix)
+                        && logical.endsWith('.class') && !entry.startsWith(nestedPath + '!')
+            }
+            if (!outsideNestedClasses.isEmpty()) {
+                throw new GradleException("projects_client has ${name} classes outside its one nested JAR: ${outsideNestedClasses}")
+            }
+            ownedRuntimeEntries.addAll(nestedContents)
+
+            def clientOccurrences = entriesByArtifact.client.findAll { entry ->
+                isClassOrResource(logicalName(entry)) && ownedRuntimeEntries.contains(logicalName(entry))
+            }.groupBy { logicalName(it) }
+            def clientDuplicates = clientOccurrences.findAll { _, values -> values.size() != 1 }
+            if (!clientDuplicates.isEmpty()) {
+                throw new GradleException("projects_client duplicates ${name} class/resource ownership: ${clientDuplicates.keySet()}")
+            }
+            logger.lifecycle("ARTIFACT_OWNERSHIP: projects_client ${name} nestedJars=1 classCount=${classes.size()} "
+                    + "classResourceCount=${nestedContents.size()}")
+        }
+
+        def devtoolsDuplicates = entriesByArtifact.devtools.findAll { entry ->
+            def logical = logicalName(entry)
+            isClassOrResource(logical)
+                    && (ownedRuntimeEntries.contains(logical)
+                    || runtimeModules.any { _, specification -> logical.startsWith(specification.classPrefix) && logical.endsWith('.class') })
+        }
+        if (!devtoolsDuplicates.isEmpty()) {
+            throw new GradleException("projects_devtools duplicates runtime class/resource entries: ${devtoolsDuplicates}")
+        }
+        runtimeModules.each { name, specification ->
+            logger.lifecycle("ARTIFACT_OWNERSHIP: projects_devtools ${name} nestedJars=0 classCount=0 "
+                    + "classResourceCount=0")
+        }
+        logger.lifecycle('NESTED_ARTIFACT_PASS: projects_client owns exactly one ui-runtime and minecraft-adapter nested JAR; '
+                + 'all runtime class/resource entries are unique (standard and synthetic Loom metadata excluded) and '
+                + 'projects_devtools owns zero runtime duplicates')
+    }
+}
+
+tasks.register('verifyRuntimeResourceManifest') {
+    group = 'verification'
+    description = 'Verifies one-time projects_client ownership of Stage 2 fonts, licenses, and runtime manifests.'
+    dependsOn ':client-core:jar', ':devtools:jar'
+    doLast {
+        def clientArtifact = project(':client-core').layout.buildDirectory
+                .file("libs/projects-client-${project.version}.jar").get().asFile
+        def devtoolsArtifact = project(':devtools').layout.buildDirectory
+                .file("libs/projects-devtools-${project.version}.jar").get().asFile
+        if (!clientArtifact.isFile() || !devtoolsArtifact.isFile()) {
+            throw new GradleException('Stage 2 artifacts are missing for resource ownership validation')
+        }
+        def entriesFor = { File artifact ->
+            def entries = new ArrayList<String>()
+            collectZipEntries(artifact.bytes, '', entries)
+            entries
+        }
+        def clientEntries = entriesFor(clientArtifact)
+        def devtoolsEntries = entriesFor(devtoolsArtifact)
+        def adapterNested = clientEntries.findAll {
+            it ==~ /META-INF\/jars\/minecraft-adapter-[^\/!]+\.jar/
+        }
+        if (adapterNested.size() != 1) {
+            throw new GradleException("Expected exactly one nested minecraft-adapter jar, found ${adapterNested}")
+        }
+        def adapterPath = adapterNested[0]
+        def runtimePrefixes = [
+                'assets/projects_client/fonts/',
+                'assets/projects_client/licenses/fonts/',
+                'assets/projects_client/licenses/icons/',
+                'assets/projects_client/licenses/runtime-resource-manifest.json',
+                'assets/projects_client/textures/ui/studio_icons_24.png',
+                'assets/projects_client/textures/ui/shell_icons_96.png',
+                'assets/projects_client/textures/ui/shell_surface_masks_4x.png'
+        ]
+        def isRuntimeResource = { String entry ->
+            def logical = entry.substring(entry.lastIndexOf('!') + 1)
+            runtimePrefixes.any { logical.startsWith(it) }
+        }
+        def logical = { String entry -> entry.substring(entry.lastIndexOf('!') + 1) }
+        def resources = clientEntries.findAll { isRuntimeResource(it) }
+        if (resources.isEmpty()) throw new GradleException('No Stage 2 runtime resources found in projects_client')
+        def duplicateResources = resources.groupBy(logical).findAll { _, values -> values.size() != 1 }
+        if (!duplicateResources.isEmpty()) {
+            throw new GradleException("projects_client duplicates Stage 2 resources: ${duplicateResources.keySet()}")
+        }
+        def outsideAdapter = resources.findAll { !it.startsWith(adapterPath + '!') }
+        if (!outsideAdapter.isEmpty()) {
+            throw new GradleException("Stage 2 resources escaped the adapter owner: ${outsideAdapter}")
+        }
+        def fontFiles = resources.findAll { logical(it).startsWith('assets/projects_client/fonts/')
+                && logical(it).toLowerCase(Locale.ROOT).endsWith('.ttf') }
+        if (fontFiles.size() != 9) {
+            throw new GradleException("Expected 9 bundled TTF faces (Inter 4 + JetBrains 4 + Noto CJK 1), found ${fontFiles.size()}")
+        }
+        def requiredResources = [
+                'assets/projects_client/licenses/fonts/typography-font-manifest.json',
+                'assets/projects_client/licenses/fonts/OFL-1.1-Inter-4.1.txt',
+                'assets/projects_client/licenses/fonts/OFL-1.1-JetBrainsMono-2.304.txt',
+                'assets/projects_client/licenses/fonts/OFL-1.1-NotoSansCJK-2.004.txt',
+                'assets/projects_client/licenses/icons/manifest.json',
+                'assets/projects_client/licenses/icons/shell-manifest.json',
+                'assets/projects_client/licenses/runtime-resource-manifest.json',
+                'assets/projects_client/textures/ui/studio_icons_24.png',
+                'assets/projects_client/textures/ui/shell_icons_96.png',
+                'assets/projects_client/textures/ui/shell_surface_masks_4x.png',
+                'assets/projects_client/fonts/inter/inter-regular.ttf',
+                'assets/projects_client/fonts/inter/inter-medium.ttf',
+                'assets/projects_client/fonts/inter/inter-semibold.ttf',
+                'assets/projects_client/fonts/inter/inter-bold.ttf',
+                'assets/projects_client/fonts/noto-sans-cjk-jp/notosanscjkjp-vf.ttf'
+        ]
+        requiredResources.each { path ->
+            def matches = resources.findAll { logical(it) == path }
+            if (matches.size() != 1) throw new GradleException("Required runtime resource count for ${path}: ${matches.size()}")
+        }
+        def atlasLogicalPath = 'assets/projects_client/textures/ui/studio_icons_24.png'
+        def adapterBytes = new java.util.zip.ZipFile(clientArtifact).withCloseable { outer ->
+            outer.getInputStream(outer.getEntry(adapterPath)).bytes
+        }
+        byte[] atlasBytes = null
+        byte[] shellAtlasBytes = null
+        byte[] shellSurfaceBytes = null
+        byte[] runtimeManifestBytes = null
+        new java.util.zip.ZipInputStream(new ByteArrayInputStream(adapterBytes)).withCloseable { nested ->
+            java.util.zip.ZipEntry entry
+            while ((entry = nested.nextEntry) != null) {
+                if (entry.name == atlasLogicalPath) atlasBytes = nested.readAllBytes()
+                if (entry.name == 'assets/projects_client/textures/ui/shell_icons_96.png') {
+                    shellAtlasBytes = nested.readAllBytes()
+                }
+                if (entry.name == 'assets/projects_client/textures/ui/shell_surface_masks_4x.png') {
+                    shellSurfaceBytes = nested.readAllBytes()
+                }
+                if (entry.name == 'assets/projects_client/licenses/runtime-resource-manifest.json') {
+                    runtimeManifestBytes = nested.readAllBytes()
+                }
+            }
+        }
+        if (atlasBytes == null) throw new GradleException("Atlas resource missing from adapter nested JAR: ${atlasLogicalPath}")
+        def atlasImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(atlasBytes))
+        if (atlasImage == null || atlasImage.width != 192 || atlasImage.height != 96) {
+            throw new GradleException("Atlas dimensions must be 192x96, found ${atlasImage?.width}x${atlasImage?.height}")
+        }
+        def atlasHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(atlasBytes).collect { String.format('%02X', it) }.join()
+        if (atlasHash != 'ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326') {
+            throw new GradleException("Atlas provenance hash mismatch: ${atlasHash}")
+        }
+        if (runtimeManifestBytes == null
+                || !new String(runtimeManifestBytes, java.nio.charset.StandardCharsets.UTF_8)
+                .contains('"atlasSha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326"')) {
+            throw new GradleException('Runtime resource manifest atlas SHA-256 mismatch')
+        }
+        if (shellAtlasBytes == null || shellSurfaceBytes == null) {
+            throw new GradleException('Client Shell atlas resources are missing from the adapter nested JAR')
+        }
+        def shellAtlasImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(shellAtlasBytes))
+        if (shellAtlasImage == null || shellAtlasImage.width != 576 || shellAtlasImage.height != 384) {
+            throw new GradleException("Shell icon atlas dimensions must be 576x384, found ${shellAtlasImage?.width}x${shellAtlasImage?.height}")
+        }
+        def shellSurfaceImage = javax.imageio.ImageIO.read(new ByteArrayInputStream(shellSurfaceBytes))
+        if (shellSurfaceImage == null || shellSurfaceImage.width != 3200 || shellSurfaceImage.height != 320) {
+            throw new GradleException("Shell surface mask dimensions must be 3200x320, found ${shellSurfaceImage?.width}x${shellSurfaceImage?.height}")
+        }
+        def shellAtlasHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(shellAtlasBytes).collect { String.format('%02X', it) }.join()
+        def shellSurfaceHash = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(shellSurfaceBytes).collect { String.format('%02X', it) }.join()
+        if (shellAtlasHash != '5AEDA700FFEE2909446DB9C6A1ADC7EA678FF40B478EB81AD2A62D1EFD360EC2'
+                || shellSurfaceHash != 'B4D0C2F1CE31B41DFB6080D3873E1F4CC6EBA0D2FFB04C2B4668134323BFD81A') {
+            throw new GradleException("Client Shell asset hash mismatch: icon=${shellAtlasHash} surface=${shellSurfaceHash}")
+        }
+        def devtoolsLeak = devtoolsEntries.findAll { isRuntimeResource(it) }
+        if (!devtoolsLeak.isEmpty()) throw new GradleException("projects_devtools contains runtime resources: ${devtoolsLeak}")
+        logger.lifecycle("RUNTIME_RESOURCE_MANIFEST_PASS: fonts=${fontFiles.size()} resources=${resources.size()} "
+                + "owner=projects_client nestedAdapter=1 devtoolsRuntimeResources=0 duplicates=0 "
+                + "studioAtlas=192x96 sha256=${atlasHash} shellAtlas=576x384 sha256=${shellAtlasHash} "
+                + "shellSurfaces=3200x320 sha256=${shellSurfaceHash}")
     }
 }

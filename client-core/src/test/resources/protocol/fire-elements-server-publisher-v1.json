@@ -1,0 +1,14 @@
+{
+  "compatibleServerSha": "6c20b167bb43063490e8bcac189dd5af8e343a87",
+  "sessionId": "30000000-0000-0000-0000-000000000003",
+  "capability": "projects:elements",
+  "payloadVersion": 1,
+  "stateA": {
+    "description": "Server publisher output at Fire 10 with detonation pulse revision 7",
+    "packetBase64": "AQMAEXByb2plY3RzOmVsZW1lbnRzAAAAATAAAAAAAAAAAAAAAAAAAAMAAABTAAAATQAAAAAAAABkAAAAAAAAAAAAAAAKQDkAAAAAAAAAAAAAAAAAAAAAAAAAAAATiAAAAAAAAAAHAAAAAAAehIAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "stateB": {
+    "description": "Server publisher output at residual Fire 3 with the same pulse revision",
+    "packetBase64": "AQMAEXByb2plY3RzOmVsZW1lbnRzAAAAATAAAAAAAAAAAAAAAAAAAAMAAABTAAAATQAAAAAAAABlQCkAAAAAAAAAAAADQDkAAAAAAAA/4AAAAAAAAAEAAAAAAAAPoAAAAAAAAAAHAAAAAAAehIAAAAAAAAAAAAAAAAAAAAAAAAA="
+  }
+}

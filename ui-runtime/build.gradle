@@ -1,0 +1,62 @@
+plugins { id 'java-library' }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test') { failOnNoDiscoveredTests = false }
+
+tasks.register('uiRuntimeFoundationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.ui.runtime.UiRuntimeFoundationTest'
+    jvmArgs '-ea'
+}
+
+def stageTwoPureChecks = [
+        typographyRuntimeTest: 'io.github.gyai.projects.ui.runtime.typography.TypographyRuntimeTypographyTest',
+        themeRuntimeTest: 'io.github.gyai.projects.ui.runtime.theme.UiThemeRuntimeTest',
+        iconRuntimeTest: 'io.github.gyai.projects.ui.runtime.icon.IconRuntimeFocusedTest',
+        componentKitTest: 'io.github.gyai.projects.ui.runtime.component.LiquidGlassComponentStateMachineTest',
+        uiInputHostTimelineTest: 'io.github.gyai.projects.ui.runtime.component.UiInputHostTimelineIntegrationTest'
+]
+stageTwoPureChecks.each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = className
+        workingDir rootProject.projectDir
+        jvmArgs '-ea'
+    }
+}
+
+tasks.named('test') { dependsOn 'uiRuntimeFoundationTest', stageTwoPureChecks.keySet() }
+
+tasks.register('verifyUiRuntimePurity') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def forbiddenImports = ~/(?m)^\s*import\s+(net\.minecraft|net\.fabricmc|com\.mojang\.blaze3d|org\.lwjgl|java\.awt)(\.|;)/
+        def sources = fileTree('src/main/java').matching { include '**/*.java' }.files
+        def offenders = sources.findAll { it.text =~ forbiddenImports }
+        if (!offenders.isEmpty()) throw new GradleException("ui-runtime has forbidden imports: ${offenders}")
+        def jarFile = tasks.named('jar').get().archiveFile.get().asFile
+        def output = providers.exec {
+            commandLine 'jdeps', '--multi-release', '25', '-summary', jarFile
+        }.standardOutput.asText.get()
+        def external = output.readLines().findAll { line ->
+            line.contains('->') && !line.contains('java.base') && !line.contains('ui-runtime')
+        }
+        if (!external.isEmpty()) throw new GradleException("ui-runtime has non-Java dependencies: ${external}")
+        logger.lifecycle("UI_RUNTIME_PURITY_PASS: ${sources.size()} source files; jdeps is java.base-only")
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyUiRuntimePurity' }

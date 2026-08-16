@@ -1,0 +1,51 @@
+{
+  "catalog": "ProjectS Studio icon runtime v0.1",
+  "provenance": "All procedural geometry and atlas slot metadata in this directory's runtime contract are original ProjectS work.",
+  "third_party_assets": [],
+  "license": "ProjectS source license applies to the original runtime geometry; no third-party artwork is bundled.",
+  "atlas_policy": "Atlas artwork is original ProjectS procedural geometry rasterized to transparent alpha-only cells; no baked tint/glow is stored, and procedural geometry remains the authoritative fallback.",
+  "atlas": {
+    "resource": "assets/projects_client/textures/ui/studio_icons_24.png",
+    "dimensions": [192, 96],
+    "cell_size": 24,
+    "columns": 8,
+    "rows": 4,
+    "backed_keys": ["projects:shape", "projects:motion", "projects:phase", "projects:trail", "projects:timeline", "projects:particle", "projects:appearance", "projects:inspector"],
+    "generated_by": "scripts/generate-studio-icon-atlas.py",
+    "sha256": "ABAD6570D82F4BDD4B4FB5819D4FC295F1DC5694AA66581CB7BFA6C066DEF326",
+    "third_party_artwork": false
+  },
+  "shellAtlas": {
+    "resource": "assets/projects_client/textures/ui/shell_icons_96.png",
+    "dimensions": [576, 384],
+    "cell_size": 96,
+    "columns": 6,
+    "rows": 4,
+    "keys": ["projects:brand", "projects:home", "projects:library", "projects:sliders", "projects:chevron-right", "projects:chevron-down", "projects:arrow-right", "projects:play", "projects:monitor", "projects:server", "projects:check", "projects:loader", "projects:close", "projects:retry", "projects:warning", "projects:eye", "projects:sparkle", "projects:info", "projects:shield", "projects:layers", "projects:keyboard"],
+    "generated_by": "scripts/generate-shell-renderer-assets.py",
+    "source": "mockups/projects-client-shell/index.html",
+    "symbols": ["icon-brand", "icon-home", "icon-library", "icon-sliders", "icon-chevron-right", "icon-chevron-down", "icon-arrow-right", "icon-play", "icon-monitor", "icon-server", "icon-check", "icon-loader", "icon-x", "icon-rotate", "icon-warning", "icon-eye", "icon-sparkle", "icon-info", "icon-shield", "icon-layers", "icon-keyboard"],
+    "sha256": "5aeda700ffee2909446db9c6a1adc7ea678ff40b478eb81ad2a62d1efd360ec2",
+    "antialiased_alpha_only": true,
+    "third_party_artwork": false
+  },
+  "shellSurfaceMasks": {
+    "resource": "assets/projects_client/textures/ui/shell_surface_masks_4x.png",
+    "dimensions": [3200, 320],
+    "tile_size": 320,
+    "columns": 10,
+    "logical_tile_size": 80,
+    "logical_slice": 32,
+    "source_cell": 80,
+    "border_widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "source_cap": 32,
+    "source_radius": 30,
+    "shadow_blur_radius": 8,
+    "kinds": ["fill", "border", "shadow"],
+    "generated_by": "scripts/generate-shell-renderer-assets.py",
+    "sha256": "b4d0c2f1ce31b41dfb6080d3873e1f4cc6eba0d2ffb04c2b4668134323bfd81a",
+    "antialiased_alpha_only": true,
+    "third_party_artwork": false
+  },
+  "runtime_downloads": false
+}

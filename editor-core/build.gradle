@@ -1,0 +1,16 @@
+plugins { id 'java-library' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; withSourcesJar(); sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
+tasks.withType(JavaCompile).configureEach { options.release = 25; options.encoding = 'UTF-8' }
+tasks.named('test') { failOnNoDiscoveredTests = false }
+tasks.register('editorCoreFoundationTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.editor.core.EditorCoreFoundationTest'; jvmArgs '-ea' }
+tasks.named('check') { dependsOn 'editorCoreFoundationTest' }
+tasks.register('verifyEditorCorePurity') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def forbidden = fileTree('src/main/java').matching { include '**/*.java' }.files.findAll { file -> file.text =~ /(?:net\.minecraft|net\.fabricmc|org\.lwjgl|io\.github\.gyai\.projects\.client)/ }
+        if (!forbidden.empty) throw new GradleException("editor-core has forbidden imports: ${forbidden}")
+        def output = providers.exec { commandLine 'jdeps', '--multi-release', '25', '-summary', tasks.named('jar').get().archiveFile.get().asFile }.standardOutput.asText.get()
+        if (output.readLines().any { line -> line.contains('->') && !line.contains('java.base') && !line.contains('editor-core') }) throw new GradleException("editor-core is not Java-base only: ${output}")
+    }
+}
+tasks.named('check') { dependsOn 'verifyEditorCorePurity' }

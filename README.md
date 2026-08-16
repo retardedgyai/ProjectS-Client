@@ -6,7 +6,7 @@ Open PowerShell in this `ProjectS-Client` folder, then run:
 
 ```powershell
 .\gradlew.bat --version
-.\gradlew.bat build
+.\gradlew.bat clean build -PskipAutoStart
 ```
 
 Do not run `cd ProjectS-Client` if PowerShell already shows a path ending in `ProjectS-Client>`.
@@ -21,11 +21,16 @@ Requirements:
 Output:
 
 ```text
-build\libs\projects-client-0.1.0.jar
+client-core\build\libs\projects-client-0.1.0.jar
+devtools\build\libs\projects-devtools-0.1.0.jar
 ```
 
-## 管理者用バランス調整
+`editor-core` is nested in the DevTools artifact and is not manually installed.
 
-対応するProjectSサーバーへ接続すると、ProjectSメニューから
-「バランス調整」を開けます。利用にはサーバー側の`projects.dev`権限が必要です。
+## Developer Tools / 管理者用バランス調整
+
+Install `projects-devtools` beside Client Core, then open ProjectS menu →
+`Developer Tools` → `Balance` (or Mob Editor, UI Kit, and the editor frontend).
+Balance requires the server-side `projects.dev` permission; the optional mod does not
+grant permission.
 変更はサーバー側で検証され、「適用」とファイルへの「保存」は別操作です。

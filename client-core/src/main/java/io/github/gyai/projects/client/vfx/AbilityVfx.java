@@ -1,0 +1,160 @@
+package io.github.gyai.projects.client.vfx;
+
+import java.nio.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.CodingErrorAction;
+import java.util.*;
+
+/** Network- and game-independent v1 ability visual protocol and geometry. */
+public final class AbilityVfx {
+    public static final int VERSION = 1, MAX_PACKET = 16_384, MAX_PRIMITIVES = 16,
+            MAX_SAMPLES_PER_PRIMITIVE = 512, MAX_SAMPLES_PER_CUE = 2_048;
+    private AbilityVfx() {}
+    public enum Hook { CAST, TELEGRAPH, TRAVEL, HIT, EXPIRE, CANCEL }
+    public enum Type { POINT, LINE, ARC, CIRCLE, CONE, SPIRAL, SPHERE, WAVE, BEZIER, BURST }
+    public enum Quality { LOW(0.35), MEDIUM(0.65), HIGH(1.0); final double density; Quality(double d) { density=d; } }
+    /** Appearance is deliberately data-only: Minecraft particle resolution stays at the client boundary. */
+    public enum AppearanceKind { DEBUG_QUAD, PARTICLE }
+    public record Appearance(AppearanceKind kind, String id) {
+        public static final Appearance DEBUG_QUAD = new Appearance(AppearanceKind.DEBUG_QUAD, "projects:debug_quad");
+        public Appearance { if (!SupportedAppearanceCatalog.supports(kind, id)) throw new IllegalArgumentException("Unsupported appearance"); }
+        public static Appearance particle(String id) { return new Appearance(AppearanceKind.PARTICLE, id); }
+    }
+    public record Vec(double x,double y,double z) {
+        public Vec add(Vec b){return new Vec(x+b.x,y+b.y,z+b.z);} public Vec mul(double s){return new Vec(x*s,y*s,z*s);}
+        public double dot(Vec b){return x*b.x+y*b.y+z*b.z;} public Vec cross(Vec b){return new Vec(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);}
+        public double length(){return Math.hypot(Math.hypot(x,y),z);} public Vec normalized(){double n=length(); return n>1e-8&&Double.isFinite(n)?mul(1/n):null;}
+        public boolean finite(){return Double.isFinite(x)&&Double.isFinite(y)&&Double.isFinite(z);}
+    }
+    /** Local +Z forward, +Y up, +X right. */
+    public record Frame(Vec origin, Vec forward, Vec up) {
+        public Vec world(Vec local) { Vec f=forward.normalized(), u0=up.normalized(); if(f==null||u0==null)return null; Vec right=u0.cross(f).normalized(); if(right==null)return null; Vec up2=f.cross(right).normalized(); return origin.add(right.mul(local.x)).add(up2.mul(local.y)).add(f.mul(local.z)); }
+    }
+    public record Color(int r,int g,int b,int a) {}
+    public record Primitive(Type type,int delay,int duration,Color color,double width,int density,long seed,Vec offset,double yaw,double size,double radius,double length,double height,double angle,double startAngle,double sweepAngle,double turns,int count,List<Vec> controls,Appearance appearance,MotionSpec motion) {
+        public Primitive { appearance=appearance==null?Appearance.DEBUG_QUAD:appearance; motion=motion==null?MotionSpec.LEGACY_DEFAULT:motion; controls=List.copyOf(controls==null?List.of():controls); if(type!=null)motion.validateFor(type); }
+        /** Existing v1 constructors retain their exact DEBUG_QUAD semantics. */
+        public Primitive(Type type,int delay,int duration,Color color,double width,int density,long seed,Vec offset,double yaw,double size,double radius,double length,double height,double angle,double startAngle,double sweepAngle,double turns,int count,List<Vec> controls) { this(type,delay,duration,color,width,density,seed,offset,yaw,size,radius,length,height,angle,startAngle,sweepAngle,turns,count,controls,Appearance.DEBUG_QUAD,MotionSpec.LEGACY_DEFAULT); }
+        public Primitive(Type type,int delay,int duration,Color color,double width,int density,long seed,Vec offset,double yaw,double size,double radius,double length,double height,double angle,double startAngle,double sweepAngle,double turns,int count,List<Vec> controls,Appearance appearance) { this(type,delay,duration,color,width,density,seed,offset,yaw,size,radius,length,height,angle,startAngle,sweepAngle,turns,count,controls,appearance,MotionSpec.LEGACY_DEFAULT); }
+    }
+    public record Cue(UUID session,long sequence,UUID cueId,UUID castId,String visualId,Hook hook,int actionIndex,int emissionIndex,UUID worldId,String dimension,Frame frame,long serverTick,long startTick,int duration,List<Primitive> primitives) {}
+    public record Decoded(boolean valid, Cue cue) { public static Decoded invalid(){return new Decoded(false,null);} }
+    public record Command(Vec a, Vec b, Color color, double width) {}
+
+    public static Decoded decode(byte[] bytes) {
+        if(bytes==null||bytes.length==0||bytes.length>MAX_PACKET)return Decoded.invalid();
+        try { Reader r=new Reader(bytes); if(r.u8()!=VERSION)return Decoded.invalid(); UUID session=r.uuid(); long seq=r.i64(); if(seq<=0) throw new IllegalArgumentException(); UUID id=r.uuid(),cast=r.uuid(); String visual=r.string(96); if(!visual.matches("[a-z0-9_.-]+:[a-z0-9/._-]+"))throw new IllegalArgumentException(); Hook hook=enumAt(Hook.values(),r.u8()); int action=r.i32(), emission=r.i32(); if(action < -1 || emission<0)throw new IllegalArgumentException(); UUID world=r.uuid(); String dimension=r.string(128); Frame frame=new Frame(r.vec(30_000_000),r.vec(0),r.vec(0)); validateFrame(frame); long sent=r.i64(), start=r.i64(); int duration=r.i32(); if(duration<1||duration>1200)throw new IllegalArgumentException(); int n=r.u8(); if(n<1||n>MAX_PRIMITIVES)throw new IllegalArgumentException(); List<Primitive> ps=new ArrayList<>();
+            boolean skippedUnknownParticle=false;for(int i=0;i<n;i++){int type=r.u8(),ver=r.u8(),len=r.u16(); byte[] payload=r.bytes(len); if(type>=Type.values().length||(ver!=1&&ver!=2))continue; Type primitiveType=enumAt(Type.values(),type); Primitive p=ver==1?primitive(primitiveType,payload,Appearance.DEBUG_QUAD,false):primitive(primitiveType,payload,null,true); if(p!=null)ps.add(p);else skippedUnknownParticle=true;}
+            int intent=0; for(Primitive p:ps){if(p.delay+p.duration>duration)throw new IllegalArgumentException();intent+=Math.min(MAX_SAMPLES_PER_PRIMITIVE,p.type==Type.BURST?p.count:p.density);if(intent>MAX_SAMPLES_PER_CUE)throw new IllegalArgumentException();} if(r.remaining()!=0||(ps.isEmpty()&&!skippedUnknownParticle))return Decoded.invalid(); return new Decoded(true,new Cue(session,seq,id,cast,visual,hook,action,emission,world,dimension,frame,sent,start,duration,List.copyOf(ps)));
+        } catch(RuntimeException e){return Decoded.invalid();}
+    }
+    /** Strict additive decoder for projects:ability_vfx_v2 / primitive envelope version 3. */
+    public static Decoded decodeV2(byte[] bytes) {
+        if (bytes == null || bytes.length == 0 || bytes.length > MAX_PACKET) return Decoded.invalid();
+        try {
+            Reader r = new Reader(bytes);
+            if (r.u8() != 2) return Decoded.invalid();
+            UUID session = r.uuid(); long sequence = r.i64(); if (sequence <= 0) throw new IllegalArgumentException();
+            UUID cueId = r.uuid(), castId = r.uuid(); String visualId = r.string(96);
+            if (!visualId.matches("[a-z0-9_.-]+:[a-z0-9/._-]+")) throw new IllegalArgumentException();
+            Hook hook = enumAt(Hook.values(), r.u8()); int action = r.i32(), emission = r.i32();
+            if (action < -1 || emission < 0) throw new IllegalArgumentException();
+            UUID world = r.uuid(); String dimension = r.string(128);
+            Frame frame = new Frame(r.vec(30_000_000), r.vec(0), r.vec(0)); validateFrame(frame);
+            long serverTick = r.i64(), startTick = r.i64(); int duration = r.i32();
+            if (duration < 1 || duration > 1200) throw new IllegalArgumentException();
+            int count = r.u8(); if (count < 1 || count > MAX_PRIMITIVES) throw new IllegalArgumentException();
+            List<Primitive> primitives = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                Type type = enumAt(Type.values(), r.u8());
+                if (r.u8() != 3) throw new IllegalArgumentException();
+                primitives.add(primitiveV2(type, r.bytes(r.u16())));
+            }
+            int intent = 0;
+            for (Primitive primitive : primitives) {
+                if (primitive.delay + primitive.duration > duration) throw new IllegalArgumentException();
+                intent += primitive.type == Type.BURST ? primitive.count : primitive.density;
+                if (intent > MAX_SAMPLES_PER_CUE) throw new IllegalArgumentException();
+            }
+            if (r.remaining() != 0) throw new IllegalArgumentException();
+            return new Decoded(true, new Cue(session, sequence, cueId, castId, visualId, hook, action, emission,
+                    world, dimension, frame, serverTick, startTick, duration, List.copyOf(primitives)));
+        } catch (RuntimeException e) {
+            return Decoded.invalid();
+        }
+    }
+
+    private static Primitive primitiveV2(Type type, byte[] data) {
+        Reader r = new Reader(data);
+        int delay = r.u16(), duration = r.u16();
+        if (delay > 200 || duration < 1 || duration > 1200 || delay + duration > 1200) throw new IllegalArgumentException();
+        Color color = new Color(r.u8(), r.u8(), r.u8(), r.u8());
+        double width = r.d(); int density = r.u16(); long seed = r.i64(); Vec offset = r.vec(128); double yaw = r.d();
+        double size = r.d(), radius = r.d(), length = r.d(), height = r.d(), angle = r.d(), start = r.d(), sweep = r.d(), turns = r.d();
+        int count = r.u16(), controlCount = r.u8();
+        if (width <= 0 || width > 16 || density < 1 || density > 256 || count > 64 || controlCount > 8
+                || !finite(yaw, size, radius, length, height, angle, start, sweep, turns)) throw new IllegalArgumentException();
+        List<Vec> controls = new ArrayList<>(controlCount); for (int i = 0; i < controlCount; i++) controls.add(r.vec(128));
+        AppearanceKind kind = enumAt(AppearanceKind.values(), r.u8()); String appearanceId = r.string(96);
+        Appearance appearance = new Appearance(kind, appearanceId);
+        MotionMode mode = enumAt(MotionMode.values(), r.u8());
+        MotionDirection direction = enumAt(MotionDirection.values(), r.u8());
+        MotionEasing easing = enumAt(MotionEasing.values(), r.u8());
+        MotionSpec motion = new MotionSpec(mode, direction, easing, r.d(), r.d());
+        if (r.remaining() != 0) throw new IllegalArgumentException();
+        validateType(type, size, radius, length, height, angle, start, sweep, turns, count, controlCount);
+        return new Primitive(type, delay, duration, color, width, density, seed, offset, yaw, size, radius, length,
+                height, angle, start, sweep, turns, count, List.copyOf(controls), appearance, motion);
+    }
+    /** v2 consists of the byte-identical v1 body followed by kind=PARTICLE and a strict UTF-8 id. */
+    private static Primitive primitive(Type type, byte[] data, Appearance legacy, boolean v2) { Reader r=new Reader(data); int delay=r.u16(),duration=r.u16(); if(delay>200||duration<1||duration>1200||delay+duration>1200)throw new IllegalArgumentException(); Color c=new Color(r.u8(),r.u8(),r.u8(),r.u8()); double width=r.d(); int density=r.u16(); long seed=r.i64(); Vec offset=r.vec(128); double yaw=r.d(); double size=r.d(),radius=r.d(),length=r.d(),height=r.d(),angle=r.d(),start=r.d(),sweep=r.d(),turns=r.d(); int count=r.u16(), cp=r.u8(); if(width<=0||width>16||density<1||density>256||count>64||cp>8||!finite(yaw,size,radius,length,height,angle,start,sweep,turns)||r.remaining()<(cp*24))throw new IllegalArgumentException(); List<Vec> controls=new ArrayList<>();for(int i=0;i<cp;i++)controls.add(r.vec(128)); AppearanceKind kind=null;String id=null;if(v2){kind=enumAt(AppearanceKind.values(),r.u8());id=r.string(96);if(kind!=AppearanceKind.PARTICLE)throw new IllegalArgumentException();}if(r.remaining()!=0)throw new IllegalArgumentException();validateType(type,size,radius,length,height,angle,start,sweep,turns,count,cp);if(v2&&!SupportedAppearanceCatalog.isParticle(id))return null;Appearance appearance=v2?Appearance.particle(id):legacy;return new Primitive(type,delay,duration,c,width,density,seed,offset,yaw,size,radius,length,height,angle,start,sweep,turns,count,List.copyOf(controls),appearance); }
+    private static void validateType(Type t,double size,double radius,double length,double height,double angle,double start,double sweep,double turns,int count,int cp){if(size<0||size>128||radius<0||radius>128||length<0||length>128||height<0||height>128||Math.abs(angle)>Math.PI||Math.abs(sweep)>Math.PI*4||Math.abs(turns)>32)throw new IllegalArgumentException(); switch(t){case POINT-> {required(size); zero(radius,length,height,angle,start,sweep,turns); empty(count,cp);}case LINE->{required(length);zero(size,radius,height,angle,start,sweep,turns);if(count!=0||(cp!=0&&cp!=2))throw new IllegalArgumentException();}case ARC->{required(radius);required(Math.abs(sweep));zero(size,length,height,angle,turns);empty(count,cp);}case CIRCLE->{required(radius);zero(size,length,height,angle,sweep,turns);empty(count,cp);}case CONE->{required(length);coneAngle(angle);zero(size,radius,height,start,sweep,turns);empty(count,cp);}case SPIRAL->{required(radius);required(turns);zero(size,length,angle,start,sweep);empty(count,cp);}case SPHERE->{required(radius);zero(size,length,height,angle,start,sweep,turns);empty(count,cp);}case WAVE->{required(radius);required(length);zero(size,angle,start,sweep,turns);empty(count,cp);}case BEZIER->{zero(size,radius,length,height,angle,start,sweep,turns);if(count!=0||cp<3||cp>4)throw new IllegalArgumentException();}case BURST->{required(radius);zero(size,length,height,angle,start,sweep,turns);if(count<1||cp!=0)throw new IllegalArgumentException();}}}
+    private static void required(double d){if(d<=0)throw new IllegalArgumentException();} private static void coneAngle(double d){if(d<=0||d>=Math.PI)throw new IllegalArgumentException();} private static void zero(double... ds){for(double d:ds)if(d!=0)throw new IllegalArgumentException();} private static void empty(int count,int cp){if(count!=0||cp!=0)throw new IllegalArgumentException();}
+    private static void validateFrame(Frame f){if(!f.origin.finite()||!f.forward.finite()||!f.up.finite()||f.forward.length()<1e-6||f.up.length()<1e-6||f.forward.cross(f.up).length()<1e-6)throw new IllegalArgumentException();}
+    private static boolean finite(double...x){for(double d:x)if(!Double.isFinite(d))return false;return true;}
+    private static <T>T enumAt(T[] v,int i){if(i<0||i>=v.length)throw new IllegalArgumentException();return v[i];}
+    private static final class Reader { final ByteBuffer b; Reader(byte[] x){b=ByteBuffer.wrap(x).order(ByteOrder.BIG_ENDIAN);}int remaining(){return b.remaining();} int u8(){return b.get()&255;}int u16(){return b.getShort()&65535;}int i32(){return b.getInt();}long i64(){return b.getLong();}double d(){double x=b.getDouble();if(!Double.isFinite(x))throw new IllegalArgumentException();return x;}UUID uuid(){return new UUID(i64(),i64());}byte[] bytes(int n){if(n>b.remaining())throw new BufferUnderflowException();byte[] x=new byte[n];b.get(x);return x;}String string(int max){int n=u16();if(n>max)throw new IllegalArgumentException();byte[] x=bytes(n);try{String s=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(x)).toString();if(s.isBlank())throw new IllegalArgumentException();return s;}catch(Exception e){throw new IllegalArgumentException();}}Vec vec(double max){Vec v=new Vec(d(),d(),d());if(max>0&&(Math.abs(v.x)>max||Math.abs(v.y)>max||Math.abs(v.z)>max))throw new IllegalArgumentException();return v;}}
+
+    public static List<Command> sample(Primitive p, Frame frame, double progress, Quality quality) { try { if(p==null||frame==null||quality==null)return List.of(); progress=Math.clamp(progress,0,1); int n=p.type==Type.POINT?1:Math.max(1,Math.min(MAX_SAMPLES_PER_PRIMITIVE,(int)Math.ceil((p.type==Type.BURST?Math.max(1,p.count):p.density)*quality.density))); List<Command> out=new ArrayList<>(); if(p.type==Type.BURST||p.type==Type.CONE){Vec origin=transform(p,frame,new Vec(0,0,0));for(int i=0;i<n;i++){double t=n==1?.5:i/(double)(n-1);Vec end=p.type==Type.BURST?new Vec(Math.cos(unit(p.seed,i)*Math.PI*2)*p.radius*progress,0,Math.sin(unit(p.seed,i)*Math.PI*2)*p.radius*progress):coneRim(p,t,progress);Vec worldEnd=transform(p,frame,end);if(origin!=null&&worldEnd!=null&&origin.finite()&&worldEnd.finite())out.add(new Command(origin,worldEnd,p.color,p.width));}return List.copyOf(out);} for(int i=0;i<n;i++){double t=n==1?progress:progress*i/(double)(n-1); Vec a=local(p,t,progress,i), b=(p.type==Type.POINT?null:local(p,Math.min(progress,t+progress/Math.max(1,n-1)),progress,i+1)); Vec wa=transform(p,frame,a),wb=b==null?null:transform(p,frame,b);if(wa!=null&&wa.finite()&&(wb==null||wb.finite()))out.add(new Command(wa,wb,p.color,p.type==Type.POINT?p.size:p.width));} return List.copyOf(out);}catch(RuntimeException e){return List.of();} }
+    /**
+     * Motion-aware production sampling.  Legacy default and forward reveal deliberately
+     * delegate to the exact public sampler above; only ordered reverse/travel paths use a
+     * bounded range over the same local geometry function.
+     */
+    public static List<Command> sample(Primitive p, Frame frame, AbilityVfxMotionPlanner.Plan plan, Quality quality) {
+        try {
+            if (p == null || frame == null || plan == null || quality == null) return List.of();
+            if (!p.motion().equals(plan.spec())) plan = AbilityVfxMotionPlanner.plan(p.motion(), plan.normalizedTime());
+            if (p.motion().isLegacyDefault()) return sample(p, frame, plan.normalizedTime(), quality);
+            if (p.motion().mode() == MotionMode.STATIC) return sample(p, frame, 1, quality);
+            if (p.motion().mode() == MotionMode.REVEAL && p.motion().direction() == MotionDirection.FORWARD) {
+                return sample(p, frame, plan.logicalProgress(), quality);
+            }
+            if (!p.motion().supports(p.type())) return List.of();
+            return sampleRange(p, frame, plan.sampleStart(), plan.sampleEnd(), plan.logicalProgress(), quality);
+        } catch (RuntimeException ignored) {
+            return List.of();
+        }
+    }
+
+    private static List<Command> sampleRange(Primitive p, Frame frame, double start, double end,
+                                              double progress, Quality quality) {
+        int requested = p.type == Type.BURST ? Math.max(1, p.count) : p.density;
+        int n = Math.max(1, Math.min(MAX_SAMPLES_PER_PRIMITIVE, (int)Math.ceil(requested * quality.density)));
+        List<Command> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            double t = n == 1 ? end : start + (end - start) * i / (n - 1);
+            double next = n == 1 ? t : start + (end - start) * Math.min(i + 1, n - 1) / (n - 1);
+            Vec a = local(p, t, progress, i);
+            Vec b = p.type == Type.POINT ? null : local(p, next, progress, i + 1);
+            Vec wa = transform(p, frame, a), wb = b == null ? null : transform(p, frame, b);
+            if (wa != null && wa.finite() && (wb == null || wb.finite())) {
+                out.add(new Command(wa, wb, p.color, p.type == Type.POINT ? p.size : p.width));
+            }
+        }
+        return List.copyOf(out);
+    }
+    private static Vec transform(Primitive p,Frame f,Vec v){double c=Math.cos(p.yaw),s=Math.sin(p.yaw);return f.world(p.offset.add(new Vec(v.x*c+v.z*s,v.y,-v.x*s+v.z*c)));}
+    private static Vec coneRim(Primitive p,double t,double progress){return new Vec(Math.sin((t-.5)*p.angle)*p.length*progress,0,Math.cos((t-.5)*p.angle)*p.length*progress);} private static Vec local(Primitive p,double t,double progress,int i){double a=p.startAngle+(p.type==Type.CIRCLE?Math.PI*2:p.sweepAngle)*t; return switch(p.type){case POINT->new Vec(0,0,0);case LINE->p.controls.size()>=2?lerp(p.controls.getFirst(),p.controls.get(1),t):new Vec(0,0,p.length*t);case ARC,CIRCLE->new Vec(Math.cos(a)*p.radius,0,Math.sin(a)*p.radius);case CONE->coneRim(p,t,progress);case SPIRAL->new Vec(Math.cos(t*Math.PI*2*p.turns)*p.radius,t*p.height,Math.sin(t*Math.PI*2*p.turns)*p.radius);case SPHERE-> {double az=unit(p.seed,i)*Math.PI*2;yield new Vec(Math.cos(az)*Math.sin(t*Math.PI)*p.radius,Math.cos(t*Math.PI)*p.radius,Math.sin(az)*Math.sin(t*Math.PI)*p.radius);}case WAVE->new Vec(Math.sin(t*Math.PI*2+unit(p.seed,0)*Math.PI*2)*p.radius,t*p.height,t*p.length);case BEZIER->bezier(p.controls,t);case BURST-> {double q=unit(p.seed,i)*Math.PI*2;yield new Vec(Math.cos(q)*p.radius*t,0,Math.sin(q)*p.radius*t);}};}
+    private static Vec lerp(Vec a,Vec b,double t){return a.mul(1-t).add(b.mul(t));} private static Vec bezier(List<Vec> c,double t){List<Vec> work=new ArrayList<>(c);while(work.size()>1){List<Vec> next=new ArrayList<>();for(int i=0;i<work.size()-1;i++)next.add(lerp(work.get(i),work.get(i+1),t));work=next;}return work.getFirst();} private static double unit(long s,int i){long z=s+0x9E3779B97F4A7C15L*i;z=(z^(z>>>30))*0xBF58476D1CE4E5B9L;z=(z^(z>>>27))*0x94D049BB133111EBL;return ((z^(z>>>31))>>>11)*0x1.0p-53;}
+}

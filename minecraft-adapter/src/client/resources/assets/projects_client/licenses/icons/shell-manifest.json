@@ -1,0 +1,200 @@
+{
+  "schema": "projects-client-shell-renderer-assets-v1",
+  "offlineRuntime": true,
+  "runtime_downloads": false,
+  "provenance": {
+    "source": "mockups/projects-client-shell/index.html",
+    "generatedBy": "scripts/generate-shell-renderer-assets.py",
+    "sourceSha256": "d80b2bbf1448a81d37a8195cc94ff415426ded40dbb013948852af9fb4c052c2",
+    "inlineSvgGeometry": "exact symbol fragments are hashed and rasterized without substitution",
+    "symbols": {
+      "brand": {
+        "symbol": "icon-brand",
+        "fragmentSha256": "f4a3a5fb3bdefc084d1ff9232807a1f4df97da49619eca318a9f88da876532d0"
+      },
+      "home": {
+        "symbol": "icon-home",
+        "fragmentSha256": "97b2b4c51cf2f6a4357cb756600dd855f7e4d3e23b47135643ac7c5d1031aab4"
+      },
+      "library": {
+        "symbol": "icon-library",
+        "fragmentSha256": "8d928a5cc0a2b092ce2dea29d06a3faff32a3e69519b663195ec2ed67973bd3a"
+      },
+      "sliders": {
+        "symbol": "icon-sliders",
+        "fragmentSha256": "ba73b8ec4f55cf1498ba89e5c419428ef3de9cd4100ec6bd406377f9fa42017a"
+      },
+      "chevron-right": {
+        "symbol": "icon-chevron-right",
+        "fragmentSha256": "dcd16ec6f8407a494d0b9c3cb875494598eb7da1adfb9937305595100f1b4c85"
+      },
+      "chevron-down": {
+        "symbol": "icon-chevron-down",
+        "fragmentSha256": "59aaa59a480d21bcf7c642c49c7cf299c8f20acfc7e46899d51f90422d670507"
+      },
+      "arrow-right": {
+        "symbol": "icon-arrow-right",
+        "fragmentSha256": "3f410b8353da51737a4ba51b555ee84897c300e361c91497c2b30e43f0e8e3e2"
+      },
+      "play": {
+        "symbol": "icon-play",
+        "fragmentSha256": "4bb02f23f2d23b4c4660c67739b5e8a121b9fe2b3346000eab1ff5cb7a3dd1b8"
+      },
+      "monitor": {
+        "symbol": "icon-monitor",
+        "fragmentSha256": "64d56323f0a09274aba99212f1a163f8fdd18e351aeca8324765c47a6d751825"
+      },
+      "server": {
+        "symbol": "icon-server",
+        "fragmentSha256": "6492461677dbbbb2b25110b96f67bf6bcbdefdb29d0bbaec4c080eed8cd1f413"
+      },
+      "check": {
+        "symbol": "icon-check",
+        "fragmentSha256": "a24d4cf49cdf80f03f105c129b055b8b7f1e740b822acdd540a894d7c131131b"
+      },
+      "loader": {
+        "symbol": "icon-loader",
+        "fragmentSha256": "4273074b6001f3290219db6689fa0cead715536133747ea143374cab30f33b90"
+      },
+      "close": {
+        "symbol": "icon-x",
+        "fragmentSha256": "a4f268e48c128662dd653c6192a86024726d4fb3f32f0a094fffe8b53dd7caa7"
+      },
+      "retry": {
+        "symbol": "icon-rotate",
+        "fragmentSha256": "2cf2b13ee3be4423e43f444b1b9f9f25d30ccd3d6042c7cb4a09d74a324ef0c5"
+      },
+      "warning": {
+        "symbol": "icon-warning",
+        "fragmentSha256": "6cce8b78a57b229f16d8f39a38d35382962225e52486cee2328245eaef3cabca"
+      },
+      "eye": {
+        "symbol": "icon-eye",
+        "fragmentSha256": "c8eceb5db4b955ef7b734c613618cfebf48183380422d6e765d67aa2e8abdc40"
+      },
+      "sparkle": {
+        "symbol": "icon-sparkle",
+        "fragmentSha256": "32c87a99c5823d68806187f9e9c296cd5ce23037747629ba5b303babd7d3a44b"
+      },
+      "info": {
+        "symbol": "icon-info",
+        "fragmentSha256": "a6423309a1bf38475c7bbf71bfe4e0121be026011e7a64e82c108811e5f8e438"
+      },
+      "shield": {
+        "symbol": "icon-shield",
+        "fragmentSha256": "5722d3ba76ca8af64376ba08d69cce010a8a1de71d959cd55d41b96643961b78"
+      },
+      "layers": {
+        "symbol": "icon-layers",
+        "fragmentSha256": "7b133f8a2ffaafba586c7acb11bf152555a73fd7cf71297e9ef4135ffa036363"
+      },
+      "keyboard": {
+        "symbol": "icon-keyboard",
+        "fragmentSha256": "7437716595d06a0f103ad39adf4dac0022c6eca81cbf1a81359d5fb058b97b92"
+      }
+    }
+  },
+  "license": {
+    "artwork": "ProjectS source license applies to original shell geometry and masks",
+    "thirdPartyArtwork": false,
+    "runtimeDependency": "none"
+  },
+  "iconAtlas": {
+    "resource": "assets/projects_client/textures/ui/shell_icons_96.png",
+    "dimensions": [
+      576,
+      384
+    ],
+    "cellSize": 96,
+    "columns": 6,
+    "rows": 4,
+    "supersample": 4,
+    "sourceScale": 4.0,
+    "antialiasedAlphaOnly": true,
+    "keys": [
+      "projects:brand",
+      "projects:home",
+      "projects:library",
+      "projects:sliders",
+      "projects:chevron-right",
+      "projects:chevron-down",
+      "projects:arrow-right",
+      "projects:play",
+      "projects:monitor",
+      "projects:server",
+      "projects:check",
+      "projects:loader",
+      "projects:close",
+      "projects:retry",
+      "projects:warning",
+      "projects:eye",
+      "projects:sparkle",
+      "projects:info",
+      "projects:shield",
+      "projects:layers",
+      "projects:keyboard"
+    ],
+    "symbols": [
+      "icon-brand",
+      "icon-home",
+      "icon-library",
+      "icon-sliders",
+      "icon-chevron-right",
+      "icon-chevron-down",
+      "icon-arrow-right",
+      "icon-play",
+      "icon-monitor",
+      "icon-server",
+      "icon-check",
+      "icon-loader",
+      "icon-x",
+      "icon-rotate",
+      "icon-warning",
+      "icon-eye",
+      "icon-sparkle",
+      "icon-info",
+      "icon-shield",
+      "icon-layers",
+      "icon-keyboard"
+    ],
+    "sha256": "5aeda700ffee2909446db9c6a1adc7ea678ff40b478eb81ad2a62d1efd360ec2"
+  },
+  "surfaceMasks": {
+    "resource": "assets/projects_client/textures/ui/shell_surface_masks_4x.png",
+    "dimensions": [
+      3200,
+      320
+    ],
+    "tileSize": 320,
+    "columns": 10,
+    "logicalTileSize": 80.0,
+    "logicalSlice": 32,
+    "sourceCell": 80.0,
+    "sourceCap": 32,
+    "sourceRadius": 30,
+    "borderWidths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "shadowBlurRadius": 8,
+    "tileLayout": {
+      "fill": 0,
+      "borderFirstColumn": 1,
+      "shadow": 9
+    },
+    "kinds": [
+      "fill",
+      "border",
+      "shadow"
+    ],
+    "supersample": 4,
+    "antialiasedAlphaOnly": true,
+    "sha256": "b4d0c2f1ce31b41dfb6080d3873e1f4cc6eba0d2ffb04c2b4668134323bfd81a"
+  }
+}

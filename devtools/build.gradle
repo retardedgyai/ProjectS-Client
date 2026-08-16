@@ -1,0 +1,76 @@
+plugins { id 'net.fabricmc.fabric-loom' version "${loom_version}" }
+
+evaluationDependsOn(':minecraft-adapter')
+base { archivesName = 'projects-devtools' }
+loom { splitEnvironmentSourceSets(); mods { 'projects_devtools' { sourceSet sourceSets.main; sourceSet sourceSets.client } } }
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    implementation project(path: ':client-core', configuration: 'namedElements')
+    implementation project(':editor-core')
+    implementation project(':ui-runtime')
+    clientImplementation project(':minecraft-adapter')
+    include project(':editor-core')
+}
+sourceSets {
+    client {
+        compileClasspath += project(':client-core').sourceSets.client.output
+        runtimeClasspath += project(':client-core').sourceSets.client.output
+        compileClasspath += project(':minecraft-adapter').sourceSets.client.output
+        runtimeClasspath += project(':minecraft-adapter').sourceSets.client.output
+    }
+}
+processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand 'version': project.version } }
+tasks.withType(JavaCompile).configureEach { options.release = 25; options.encoding = 'UTF-8' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
+tasks.register('mobEditorV2UiModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.client.MobEditorV2UiModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('mobEditorUxHelpersTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.client.ui.mobeditor.MobEditorUxHelpersTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('projectSUiLogicTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.client.ui.ProjectSUiLogicTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('devToolsBoundaryTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.DevToolsBoundaryTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorProtocolParityTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorProtocolParityTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxAppearanceProtocolTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxAppearanceProtocolTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorMotionProtocolTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorMotionProtocolTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillEditorAppearanceMutationTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.SkillEditorAppearanceMutationTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('editorTimelineModelTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorModelTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('skillVfxEditorUiTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxEditorUiTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('vfxDirectAuthoringTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.VfxDirectAuthoringTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('motionEditorTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.MotionEditorTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('visualUxPresentationTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.skillvfx.SkillVfxVisualUxTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('projectSUiKitLayoutTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.ui.ProjectSUiKitLayoutTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('projectSUiKitV02LayoutTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.ui.ProjectSUiKitV02LayoutTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('studioShellLayoutTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.studio.layout.StudioShellLayoutTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('studioToolInspectorTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.studio.tool.StudioToolInspectorTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('studioTimelineAssetBrowserTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.studio.timeline.StudioTimelineAssetBrowserTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.register('studioWorkspaceTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'io.github.gyai.projects.devtools.studio.ProjectSStudioWorkspaceTest'; workingDir rootProject.projectDir; jvmArgs '-ea' }
+tasks.named('check') { dependsOn 'mobEditorV2UiModelTest', 'mobEditorUxHelpersTest', 'projectSUiLogicTest', 'devToolsBoundaryTest', 'skillVfxEditorModelTest', 'skillVfxEditorProtocolParityTest', 'skillVfxAppearanceProtocolTest', 'skillVfxEditorMotionProtocolTest', 'skillEditorAppearanceMutationTest', 'editorTimelineModelTest', 'skillVfxEditorUiTest', 'vfxDirectAuthoringTest', 'motionEditorTest', 'visualUxPresentationTest', 'projectSUiKitLayoutTest', 'projectSUiKitV02LayoutTest', 'studioShellLayoutTest', 'studioToolInspectorTest', 'studioTimelineAssetBrowserTest', 'studioWorkspaceTest' }
+tasks.register('verifyDevToolsArtifact') {
+    dependsOn tasks.named('jar'), project(':client-core').tasks.named('jar')
+    doLast {
+        def jarFile = tasks.named('jar').get().archiveFile.get().asFile
+        def zip = new java.util.zip.ZipFile(jarFile)
+        def entries = zip.entries().collect { it.name }
+        def mod = zip.getInputStream(zip.getEntry('fabric.mod.json')).getText('UTF-8')
+        zip.close()
+        if (!(mod =~ /"id"\s*:\s*"projects_devtools"/) || !(mod =~ /"projects_client"\s*:\s*"0\.1\.0"/)) throw new GradleException('DevTools fabric.mod.json lacks exact projects_client dependency')
+        if (entries.count { it == 'META-INF/jars/editor-core-0.1.0.jar' } != 1) throw new GradleException("editor-core must be nested exactly once: ${entries.findAll { it.contains('editor-core') }}")
+        def runtimeLeak = entries.findAll { entry ->
+            entry.startsWith('META-INF/jars/ui-runtime-') || entry.startsWith('META-INF/jars/minecraft-adapter-')
+                    || entry.startsWith('io/github/gyai/projects/ui/runtime/')
+                    || entry.startsWith('io/github/gyai/projects/minecraft/adapter/')
+        }
+        if (!runtimeLeak.empty) throw new GradleException("DevTools must not package ProjectS runtime classes: ${runtimeLeak}")
+        def coreJar = project(':client-core').tasks.named('jar').get().archiveFile.get().asFile
+        def coreZip = new java.util.zip.ZipFile(coreJar)
+        def coreEntries = coreZip.entries().collect { it.name }.findAll { it.endsWith('.class') || it.startsWith('assets/projects_client/') } as Set
+        coreZip.close()
+        def duplicated = entries.findAll { coreEntries.contains(it) }
+        if (!duplicated.empty) throw new GradleException("DevTools duplicates Client Core content: ${duplicated}")
+        def devSource = fileTree('src').matching { include 'main/java/**/*.java', 'client/java/**/*.java' }.files.collect { it.text }.join('\n')
+        def coreSource = project(':client-core').fileTree('src').matching { include 'main/java/**/*.java', 'client/java/**/*.java' }.files.collect { it.text }.join('\n')
+        ['PayloadTypeRegistry.serverboundPlay().register(MobEditorRequestPayload.TYPE','PayloadTypeRegistry.clientboundPlay().register(MobEditorStatePayload.TYPE','PayloadTypeRegistry.serverboundPlay().register(MobEditorV2RequestPayload.TYPE','PayloadTypeRegistry.clientboundPlay().register(MobEditorV2StatePayload.TYPE','ClientPlayNetworking.registerGlobalReceiver(MobEditorStatePayload.TYPE','ClientPlayNetworking.registerGlobalReceiver(MobEditorV2StatePayload.TYPE'].each { token -> if (devSource.count(token) != 1 || coreSource.count(token) != 0) throw new GradleException("Frozen Mob ownership failed for ${token}: DevTools=${devSource.count(token)}, Core=${coreSource.count(token)}") }
+    }
+}
+tasks.named('check') { dependsOn 'verifyDevToolsArtifact' }
+tasks.named('test') { failOnNoDiscoveredTests = false }

@@ -1,0 +1,86 @@
+plugins { id 'net.fabricmc.fabric-loom' version "${loom_version}" }
+
+base { archivesName = 'minecraft-adapter' }
+
+// This module is a runtime library. It deliberately has no loom mod declaration,
+// no fabric.mod.json and no Fabric entrypoint of its own.
+loom { splitEnvironmentSourceSets() }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    clientImplementation project(':ui-runtime')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named('test') { failOnNoDiscoveredTests = false }
+
+tasks.register('adapterSkeletonTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.minecraft.adapter.MinecraftAdapterBoundaryTest'
+    workingDir rootProject.projectDir
+    jvmArgs '-ea'
+}
+
+tasks.register('tier1RendererTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.minecraft.adapter.MinecraftTier1RendererTest'
+    workingDir rootProject.projectDir
+    jvmArgs '-ea'
+}
+
+def stageTwoAdapterChecks = [
+        typographyAdapterTest: 'io.github.gyai.projects.minecraft.adapter.typography.MinecraftTypographyAdapterTest',
+        iconAdapterTest: 'io.github.gyai.projects.minecraft.adapter.icon.MinecraftIconAdapterFocusedTest',
+        componentAdapterTest: 'io.github.gyai.projects.minecraft.adapter.component.MinecraftLiquidGlassComponentAdapterTest',
+        hostAdapterTest: 'io.github.gyai.projects.minecraft.adapter.MinecraftUiScreenHostPathTest'
+]
+stageTwoAdapterChecks.each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = className
+        workingDir rootProject.projectDir
+        jvmArgs '-ea'
+    }
+}
+tasks.register('studioViewportTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'io.github.gyai.projects.minecraft.adapter.studio.viewport.StudioViewportInputTest'
+    workingDir rootProject.projectDir
+    jvmArgs '-ea'
+}
+
+tasks.named('test') { dependsOn 'adapterSkeletonTest', 'tier1RendererTest', stageTwoAdapterChecks.keySet() }
+tasks.named('check') { dependsOn 'studioViewportTest' }
+
+tasks.register('verifyMinecraftAdapterBoundary') {
+    dependsOn tasks.named('jar')
+    doLast {
+        if (file('src/main/resources/fabric.mod.json').exists()
+                || file('src/client/resources/fabric.mod.json').exists()) {
+            throw new GradleException('minecraft-adapter must not contain fabric.mod.json')
+        }
+        def sourceText = fileTree('src').matching { include '**/*.java' }.files.collect { it.text }.join('\n')
+        if (sourceText =~ /ClientModInitializer|ServerModInitializer|"entrypoints"/) {
+            throw new GradleException('minecraft-adapter must not declare a Fabric entrypoint')
+        }
+        logger.lifecycle('MINECRAFT_ADAPTER_BOUNDARY_PASS: library-only adapter has no mod descriptor/entrypoint')
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyMinecraftAdapterBoundary' }
