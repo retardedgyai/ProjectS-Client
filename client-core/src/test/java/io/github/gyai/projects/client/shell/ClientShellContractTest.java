@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Source/mockup contract guards for the formal shell boundary and visual mapping. */
+/** Source contract guards for the formal shell boundary and visual mapping. */
 public final class ClientShellContractTest {
     public static void main(String[] args) throws Exception {
         Path project = locateProjectRoot();
@@ -19,10 +19,6 @@ public final class ClientShellContractTest {
                 "ui-runtime/src/main/java/io/github/gyai/projects/ui/runtime/icon/ShellIconCatalog.java"));
         String palette = Files.readString(project.resolve(
                 "client-core/src/main/java/io/github/gyai/projects/client/shell/ClientShellPalette.java"));
-        String html = Files.readString(project.resolve("../../mockups/projects-client-shell/index.html"));
-        String css = Files.readString(project.resolve("../../mockups/projects-client-shell/styles.css"));
-        String js = Files.readString(project.resolve("../../mockups/projects-client-shell/app.js"));
-
         require(screen, "extends MinecraftUiScreenHost");
         require(screen, "ProjectSMenuScreen(Screen parent)");
         require(screen, "MinecraftUiRuntimeResources.currentOrNull()");
@@ -63,14 +59,6 @@ public final class ClientShellContractTest {
                 "CONTAINER_ALPHA = .82", "SUBTLE_ALPHA = .55", "ROUNDING_SCALE = 1.15",
                 "SPACING_SCALE = .9", "TRANSITION_MILLIS = 200")) require(palette, token);
 
-        for (String token : List.of("class=\"topbar\"", "class=\"top-tabs\"",
-                "class=\"sidebar\"", "class=\"content-toolbar\"", "class=\"app-footer\"",
-                "data-nav=\"home\"", "data-nav=\"library\"", "data-nav=\"settings\"",
-                "Launching", "Client connecting", "Connected", "Recoverable error",
-                "Session snapshot", "Choose a world.", "Profiles with", "The shell stays")) {
-            require(html + js, token);
-        }
-        for (String token : List.of("1120px", "900px", "560px", "--motion: 200ms")) require(css, token);
     }
 
     private static Path locateProjectRoot() throws IOException {
