@@ -35,6 +35,8 @@ public final class MinecraftTypographyAdapterTest {
 
             StbGlyphAtlas atlas = new StbGlyphAtlas(registry, 1, 2);
             check(atlas.resolve(latin).isPresent() && atlas.resolve(japanese).isPresent(), "bounded atlas stores glyphs");
+            check(atlas.resolve(latin).orElseThrow().renderScale() == 2,
+                    "shell glyph atlas uses physical-resolution supersampling");
             check(atlas.size() <= 2, "bounded atlas size");
             check(atlas.resolve(missing).isEmpty(), "atlas allocation bound is explicit");
 
@@ -54,6 +56,8 @@ public final class MinecraftTypographyAdapterTest {
         }
         stbMetricsShareLayout(source);
         boundedLayoutAndUploadBatches();
+        check(MinecraftGlyphAtlasTextureStore.physicalCoordinate(10.5, -1, 2) == 20,
+                "supersampled glyph coordinates retain half-pixel placement");
         System.out.println("MINECRAFT_TYPOGRAPHY_ADAPTER_TEST_PASS: stb latin japanese missing atlas renderer reload offline");
     }
 

@@ -10,10 +10,17 @@ import java.util.Optional;
 
 /** Bounded adapter atlas: rasterized alpha is retained only after a fixed-page allocation succeeds. */
 public final class StbGlyphAtlas {
-    public record AtlasGlyph(RasterizedGlyph rasterized, GlyphAtlas.Allocation allocation) {
+    public static final int RASTER_SCALE = 2;
+
+    public record AtlasGlyph(
+            RasterizedGlyph rasterized,
+            GlyphAtlas.Allocation allocation,
+            int renderScale
+    ) {
         public AtlasGlyph {
             Objects.requireNonNull(rasterized, "rasterized");
             Objects.requireNonNull(allocation, "allocation");
+            if (renderScale < 1) throw new IllegalArgumentException("renderScale");
         }
     }
 
@@ -34,10 +41,13 @@ public final class StbGlyphAtlas {
         Objects.requireNonNull(key, "key");
         AtlasGlyph cached = glyphs.get(key);
         if (cached != null) return Optional.of(cached);
-        RasterizedGlyph rasterized = registry.rasterize(key);
+        GlyphKey rasterKey = new GlyphKey(
+                key.font(), key.codePoint(), Math.multiplyExact(key.pixelSize(), RASTER_SCALE));
+        RasterizedGlyph rasterized = registry.rasterize(rasterKey);
         Optional<GlyphAtlas.Allocation> allocation = allocator.allocate(key, rasterized.width(), rasterized.height());
         if (allocation.isEmpty()) return Optional.empty();
-        AtlasGlyph result = new AtlasGlyph(rasterized, allocation.orElseThrow());
+        AtlasGlyph result = new AtlasGlyph(
+                rasterized, allocation.orElseThrow(), RASTER_SCALE);
         glyphs.put(key, result);
         return Optional.of(result);
     }

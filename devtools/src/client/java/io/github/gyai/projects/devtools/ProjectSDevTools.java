@@ -17,6 +17,7 @@ import io.github.gyai.projects.client.menu.ProjectSMenuExtensions;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfxWorldPreviewController;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfx3dAuthoringWorldRenderer;
@@ -55,5 +56,11 @@ public final class ProjectSDevTools implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayloadV3.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receiveV3(payload.state())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { BalanceClientState.reset(); MobEditorClientState.reset(); SkillEditorClientState.reset(); });
         ProjectSMenuExtensions.register(new ProjectSMenuExtension("projects.devtools", "Developer Tools", "開発者向け機能（サーバー権限が必要です）", () -> true, ProjectSDevToolsMenuScreen::open));
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.level == null
+                    && client.screen instanceof net.minecraft.client.gui.screens.TitleScreen) {
+                client.setScreen(new ProjectSDeveloperLaunchScreen());
+            }
+        });
     }
 }

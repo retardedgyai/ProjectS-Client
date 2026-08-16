@@ -81,11 +81,19 @@ public final class MinecraftGlyphAtlasTextureStore implements CustomTextRenderTa
     private void drawPreparedGlyph(StbGlyphAtlas.AtlasGlyph glyph,
                                    double x, double baselineY, int argb) {
         var allocation = glyph.allocation();
-        int drawX = safeInt(Math.round(x + glyph.rasterized().offsetX()));
-        int drawY = safeInt(Math.round(baselineY + glyph.rasterized().offsetY()));
-        graphics.blit(RenderPipelines.GUI_TEXTURED, identifiers.get(allocation.page()),
-                drawX, drawY, allocation.x(), allocation.y(), allocation.width(), allocation.height(),
-                pageWidth, pageHeight, argb);
+        int scale = glyph.renderScale();
+        var pose = graphics.pose();
+        pose.pushMatrix();
+        try {
+            pose.scale(1.0f / scale, 1.0f / scale);
+            int drawX = physicalCoordinate(x, glyph.rasterized().offsetX(), scale);
+            int drawY = physicalCoordinate(baselineY, glyph.rasterized().offsetY(), scale);
+            graphics.blit(RenderPipelines.GUI_TEXTURED, identifiers.get(allocation.page()),
+                    drawX, drawY, allocation.x(), allocation.y(),
+                    allocation.width(), allocation.height(), pageWidth, pageHeight, argb);
+        } finally {
+            pose.popMatrix();
+        }
     }
 
     /** Uploads every dirty page once, after all glyph writes for the prepared boundary. */
@@ -157,5 +165,12 @@ public final class MinecraftGlyphAtlasTextureStore implements CustomTextRenderTa
         if (value <= Integer.MIN_VALUE) return Integer.MIN_VALUE;
         if (value >= Integer.MAX_VALUE) return Integer.MAX_VALUE;
         return (int) value;
+    }
+
+    static int physicalCoordinate(double logical, int rasterOffset, int scale) {
+        if (!Double.isFinite(logical) || scale < 1) {
+            throw new IllegalArgumentException("logical/scale");
+        }
+        return safeInt(Math.round(logical * scale + rasterOffset));
     }
 }
