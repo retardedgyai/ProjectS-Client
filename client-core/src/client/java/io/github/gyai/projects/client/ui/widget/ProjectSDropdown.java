@@ -6,6 +6,7 @@ import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.icon.ProjectSStandardIcons;
 import io.github.gyai.projects.client.ui.render.ProjectSEasing;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -60,10 +61,10 @@ public final class ProjectSDropdown<T> extends AbstractWidget {
         menuLabels = new String[options.size()];
         for (int index = 0; index < options.size(); index++) {
             optionLabels[index] = options.get(index).label().getString();
-            fieldLabels[index] = Minecraft.getInstance().font.plainSubstrByWidth(
-                    optionLabels[index], width - 28);
-            menuLabels[index] = Minecraft.getInstance().font.plainSubstrByWidth(
-                    optionLabels[index], width - 24);
+            fieldLabels[index] = ProjectSTextRenderer.fit(optionLabels[index], 9,
+                    width - 28, false);
+            menuLabels[index] = ProjectSTextRenderer.fit(optionLabels[index], 8,
+                    width - 24, false);
         }
         this.selected = Math.clamp(selected, 0, options.size() - 1);
         highlighted = this.selected;
@@ -82,10 +83,9 @@ public final class ProjectSDropdown<T> extends AbstractWidget {
                 isFocused() || open ? tokens.borderSelected()
                         : isHovered() ? tokens.border() : tokens.borderSubtle());
         Option<T> current = options.get(selected);
-        graphics.text(Minecraft.getInstance().font,
-                fieldLabels[selected],
-                getX() + 8, getY() + (height - 8) / 2,
-                current.enabled() ? tokens.textPrimary() : tokens.textDisabled(), false);
+        ProjectSTextRenderer.draw(graphics, fieldLabels[selected],
+                getX() + 8, getY() + (height - 10) / 2.0, 9,
+                current.enabled() ? tokens.textPrimary() : tokens.textDisabled());
         ProjectSIconRenderer.draw(graphics, ProjectSStandardIcons.DROPDOWN,
                 getRight() - 17, getY() + (height - 10) / 2,
                 10, tokens, !active);
@@ -155,10 +155,9 @@ public final class ProjectSDropdown<T> extends AbstractWidget {
                 graphics.fill(menuRect.x() + 2, y,
                         menuRect.x() + width - 2, y + 21, tokens.surfaceHover());
             }
-            graphics.text(Minecraft.getInstance().font,
-                    menuLabels[index],
-                    menuRect.x() + 18, y + 6,
-                    option.enabled() ? tokens.textPrimary() : tokens.textDisabled(), false);
+            ProjectSTextRenderer.draw(graphics, menuLabels[index],
+                    menuRect.x() + 18, y + 5, 8,
+                    option.enabled() ? tokens.textPrimary() : tokens.textDisabled());
             if (index == selected) {
                 ProjectSIconRenderer.draw(graphics, ProjectSIcon.SUCCESS,
                         menuRect.x() + 5, y + 5, 10,

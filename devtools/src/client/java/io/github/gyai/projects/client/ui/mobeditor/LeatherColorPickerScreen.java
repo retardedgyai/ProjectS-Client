@@ -2,6 +2,7 @@ package io.github.gyai.projects.client.ui.mobeditor;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.screen.ProjectSThemedScreen;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.widget.ProjectSButton;
@@ -169,8 +170,8 @@ public final class LeatherColorPickerScreen extends ProjectSThemedScreen {
         graphics.fill(0, 0, width, height, tokens.background());
         ProjectSUiDraw.cutPanel(graphics, panelX, panelY, panelWidth, panelHeight,
                 theme.metrics().modalCornerCut(), tokens.surfaceRaised(), tokens.borderStrong());
-        graphics.text(font, "革防具の色", panelX + 20, panelY + 20,
-                tokens.textPrimary(), false);
+        ProjectSTextRenderer.drawStrong(graphics, "革防具の色",
+                panelX + 20, panelY + 18, 11, tokens.textPrimary());
         for (int x = 0; x < svWidth; x += 3) {
             for (int y = 0; y < svHeight; y += 3) {
                 int rgb = MobEditorColorLogic.hsvToRgb(hue, x / (double) svWidth,
@@ -190,11 +191,14 @@ public final class LeatherColorPickerScreen extends ProjectSThemedScreen {
                     0xFF000000 | original);
             graphics.fill(panelX + 250, hueY + 44, panelX + 304, hueY + 72,
                     0xFF000000 | current);
-            graphics.text(font, "変更前", panelX + 188, hueY + 76, tokens.textMuted(), false);
-            graphics.text(font, "現在", panelX + 250, hueY + 76, tokens.textMuted(), false);
-            graphics.text(font, "RGB  " + (current >> 16 & 255) + ", "
-                    + (current >> 8 & 255) + ", " + (current & 255),
-                    panelX + 320, hueY + 54, tokens.textSecondary(), false);
+            ProjectSTextRenderer.draw(graphics, "変更前",
+                    panelX + 188, hueY + 76, 8, tokens.textMuted());
+            ProjectSTextRenderer.draw(graphics, "現在",
+                    panelX + 250, hueY + 76, 8, tokens.textMuted());
+            ProjectSTextRenderer.drawMono(graphics,
+                    "RGB  " + (current >> 16 & 255) + ", "
+                            + (current >> 8 & 255) + ", " + (current & 255),
+                    panelX + 320, hueY + 53, 8, tokens.textSecondary());
         }
         for (int index = 0; !compact && index < SWATCHES.size(); index++) {
             graphics.fill(panelX + 24 + index * 34, hueY + 94,

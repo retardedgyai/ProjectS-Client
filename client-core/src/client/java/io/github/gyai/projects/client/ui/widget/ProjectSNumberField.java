@@ -2,10 +2,10 @@ package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.icon.ProjectSStandardIcons;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 import java.util.Locale;
@@ -116,10 +116,10 @@ public final class ProjectSNumberField extends ProjectSTextField {
         if (!unit.isBlank()) {
             var tokens = io.github.gyai.projects.client.ui.theme.ProjectSThemeManager
                     .get().activeTheme().tokens();
-            graphics.text(Minecraft.getInstance().font, unit,
-                    getRight() - Minecraft.getInstance().font.width(unit) - 6,
-                    getY() + (getHeight() - 8) / 2,
-                    tokens.textMuted(), false);
+            int unitWidth = (int) Math.ceil(ProjectSTextRenderer.monoWidth(unit, 8));
+            ProjectSTextRenderer.drawMono(graphics, unit,
+                    getRight() - unitWidth - 7,
+                    getY() + (getHeight() - 9) / 2.0, 8, tokens.textMuted());
         }
     }
 

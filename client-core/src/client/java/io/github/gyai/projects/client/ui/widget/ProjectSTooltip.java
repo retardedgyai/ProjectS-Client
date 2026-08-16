@@ -3,6 +3,7 @@ package io.github.gyai.projects.client.ui.widget;
 import io.github.gyai.projects.client.ui.render.ProjectSOverlayPlacement;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import net.minecraft.client.gui.Font;
@@ -53,11 +54,13 @@ public final class ProjectSTooltip {
         if (!focused && now - hoveredSince < DELAY_NANOS) return;
         var theme = ProjectSThemeManager.get().activeTheme();
         var tokens = theme.tokens();
-        int width = Math.clamp(Math.max(font.width(title), font.width(body)) + 20, 100, 260);
+        int width = Math.clamp((int) Math.ceil(Math.max(
+                ProjectSTextRenderer.width(titleText, 9, true),
+                ProjectSTextRenderer.width(bodyText, 8, false))) + 20, 100, 260);
         if (cachedTextWidth != width) {
             cachedTextWidth = width;
-            clippedTitle = font.plainSubstrByWidth(titleText, width - 16);
-            clippedBody = font.plainSubstrByWidth(bodyText, width - 16);
+            clippedTitle = ProjectSTextRenderer.fit(titleText, 9, width - 16, false);
+            clippedBody = ProjectSTextRenderer.fit(bodyText, 8, width - 16, false);
         }
         int height = bodyText.isBlank() ? 28 : 45;
         if (cachedRect == null || cachedMouseX != mouseX || cachedMouseY != mouseY
@@ -91,13 +94,12 @@ public final class ProjectSTooltip {
                     tone == Tone.WARNING ? ProjectSIcon.WARNING : ProjectSIcon.ERROR,
                     rect.x() + 7, rect.y() + 7, 12, titleColor);
         }
-        graphics.text(font, clippedTitle,
+        ProjectSTextRenderer.drawStrong(graphics, clippedTitle,
                 rect.x() + (tone == Tone.NORMAL ? 10 : 23),
-                rect.y() + 8, titleColor, false);
+                rect.y() + 7, 9, titleColor);
         if (!bodyText.isBlank()) {
-            graphics.text(font, clippedBody,
-                    rect.x() + 8, rect.y() + 24,
-                    tokens.textMuted(), false);
+            ProjectSTextRenderer.draw(graphics, clippedBody,
+                    rect.x() + 8, rect.y() + 23, 8, tokens.textMuted());
         }
     }
 }

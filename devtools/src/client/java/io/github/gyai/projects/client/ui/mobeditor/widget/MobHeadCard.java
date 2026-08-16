@@ -3,9 +3,9 @@ package io.github.gyai.projects.client.ui.mobeditor.widget;
 import io.github.gyai.projects.client.MobEditorStatePayload;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -29,10 +29,11 @@ public final class MobHeadCard extends AbstractButton {
         this.head = head;
         this.action = action;
         this.selected = selected;
-        var font = Minecraft.getInstance().font;
-        name = font.plainSubstrByWidth(head.displayName(), Math.max(20, width - 40));
+        name = ProjectSTextRenderer.fit(head.displayName(), 9,
+                Math.max(20, width - 40), false);
         String tags = head.tags().isEmpty() ? "" : "  #" + head.tags().getFirst();
-        detail = font.plainSubstrByWidth(head.id() + tags, Math.max(20, width - 16));
+        detail = ProjectSTextRenderer.fit(head.id() + tags, 8,
+                Math.max(20, width - 16), true);
     }
 
     @Override
@@ -52,10 +53,10 @@ public final class MobHeadCard extends AbstractButton {
                 selected ? tokens.borderSelected() : tokens.borderSubtle());
         ProjectSIconRenderer.draw(graphics, ProjectSIcon.HEAD,
                 getX() + 8, getY() + 8, 16, tokens, false, selected);
-        graphics.text(Minecraft.getInstance().font, name,
-                getX() + 30, getY() + 7, tokens.textPrimary(), false);
-        graphics.text(Minecraft.getInstance().font, detail,
-                getX() + 8, getY() + 25, tokens.textMuted(), false);
+        ProjectSTextRenderer.drawStrong(graphics, name,
+                getX() + 30, getY() + 6, 9, tokens.textPrimary());
+        ProjectSTextRenderer.drawMono(graphics, detail,
+                getX() + 8, getY() + 24, 8, tokens.textMuted());
         if (head.favorite()) {
             ProjectSIconRenderer.draw(graphics, ProjectSIcon.FAVORITE_FILLED,
                     getRight() - 18, getY() + 7, 10, tokens, false, true);

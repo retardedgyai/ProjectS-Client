@@ -4,7 +4,6 @@ import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -39,6 +38,8 @@ import io.github.gyai.projects.client.ui.mobeditor.widget.MobEquipmentSlotCard;
 import io.github.gyai.projects.client.ui.mobeditor.widget.MobHeadCard;
 import io.github.gyai.projects.client.ui.mobeditor.widget.MobLibraryEntry;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.screen.ProjectSThemedScreen;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.widget.ProjectSButton;
@@ -885,8 +886,9 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         ProjectSButton status = addPropertyButton(x, y, width,
                 "外部カタログは未設定です", () -> { });
         status.active = false;
-        status.setTooltip(Tooltip.create(Component.literal(
-                MobEditorPickerLogic.externalCatalogDisabledReason())));
+        status.tooltip(Component.literal("利用不可"), Component.literal(
+                        MobEditorPickerLogic.externalCatalogDisabledReason()),
+                io.github.gyai.projects.client.ui.widget.ProjectSTooltip.Tone.WARNING);
     }
 
     private static ProjectSIcon slotIcon(MobEditorData.Slot slot) {
@@ -1215,8 +1217,7 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                 Component.literal(label.get()), ProjectSButton.Kind.GHOST, () -> {
                     action.run();
                     holder[0].selected(selected.getAsBoolean());
-                    holder[0].setMessage(Component.literal(label.get()));
-                    holder[0].setTooltip(Tooltip.create(Component.literal(label.get())));
+                    holder[0].tooltip(Component.literal(label.get()));
                 });
         holder[0].selected(selected.getAsBoolean());
         addRenderableWidget(holder[0]);
@@ -1764,22 +1765,68 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         graphics.fill(0, 0, width, height,
                 darkBackground ? tokens.background() : tokens.backgroundAlt());
         if (layout == null || !layout.usable()) {
-            graphics.centeredText(font, "画面サイズが小さすぎます。ウィンドウを広げてください",
-                    width / 2, height / 2, tokens.warning());
+            String warning = "画面サイズが小さすぎます。ウィンドウを広げてください";
+            int warningWidth = (int) Math.ceil(ProjectSTextRenderer.width(warning, 10, true));
+            ProjectSTextRenderer.drawStrong(graphics, warning,
+                    (width - warningWidth) / 2.0, height / 2.0, 10, tokens.warning());
             super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
             return;
         }
+        int radius = Math.max(8, theme.metrics().cornerCut() * 3);
+        ProjectSUiDraw.panelShadow(graphics, layout.mobList().x(), layout.mobList().y(),
+                layout.mobList().width(), layout.mobList().height(), radius, tokens.shadow());
+        ProjectSUiDraw.panelShadow(graphics, layout.property().x(), layout.property().y(),
+                layout.property().width(), layout.property().height(), radius, tokens.shadow());
+        ProjectSUiDraw.panelShadow(graphics, layout.preview().x(), layout.preview().y(),
+                layout.preview().width(), layout.preview().height(), radius, tokens.shadow());
         ProjectSUiDraw.cutPanel(graphics, layout.mobList().x(), layout.mobList().y(),
                 layout.mobList().width(), layout.mobList().height(), theme.metrics().cornerCut(),
                 tokens.surfaceAlt(), tokens.borderCard());
         ProjectSUiDraw.cutPanel(graphics, layout.property().x(), layout.property().y(),
                 layout.property().width(), layout.property().height(), theme.metrics().cornerCut(),
                 tokens.surface(), tokens.borderCard());
-        graphics.text(font, "モブライブラリ", layout.header().x() + 4, layout.header().y() + 9,
-                tokens.textPrimary(), false);
-        graphics.text(font, title.getString() + (dirty ? "  ● 未保存" : ""),
-                layout.tabs().x(), layout.header().y() + 9,
-                dirty ? tokens.warning() : tokens.textPrimary(), false);
+        ProjectSUiDraw.cutPanel(graphics, layout.header().x(), layout.header().y(),
+                layout.mobList().width(), layout.header().height(), theme.metrics().cornerCut(),
+                tokens.surfaceAlt(), tokens.borderCard());
+        int workspaceX = layout.tabs().x();
+        int workspaceWidth = layout.preview().right() - workspaceX;
+        ProjectSUiDraw.cutPanel(graphics, workspaceX, layout.header().y(),
+                workspaceWidth, layout.header().height(), theme.metrics().cornerCut(),
+                tokens.surface(), tokens.borderCard());
+        ProjectSIconRenderer.draw(graphics, ProjectSIcon.MOB_GENERIC,
+                layout.header().x() + 11, layout.header().y() + 12, 20,
+                tokens, false, true);
+        ProjectSTextRenderer.drawMono(graphics, "PROJECTS / ENTITY AUTHORING",
+                layout.header().x() + 40, layout.header().y() + 8, 7,
+                tokens.accentPrimaryHover());
+        ProjectSTextRenderer.drawStrong(graphics, "Mob Library",
+                layout.header().x() + 40, layout.header().y() + 24, 13,
+                tokens.textPrimary());
+        String heading = draft == null ? "Mob Editor" : draft.displayName();
+        String fittedHeading = ProjectSTextRenderer.fit(heading, 16,
+                Math.max(40, layout.property().width() - 24), false);
+        ProjectSTextRenderer.drawStrong(graphics, fittedHeading,
+                workspaceX + 14, layout.header().y() + 7, 16,
+                dirty ? tokens.warning() : tokens.textPrimary());
+        ProjectSTextRenderer.drawMono(graphics,
+                draft == null ? "SELECT AN ENTITY TO BEGIN"
+                        : draft.id() + (dirty ? "  /  UNSAVED CHANGES" : "  /  SYNCHRONIZED"),
+                workspaceX + 14, layout.header().y() + 31, 7,
+                dirty ? tokens.warning() : tokens.textMuted());
+        int statusWidth = 104;
+        int statusX = layout.preview().right() - statusWidth - 10;
+        ProjectSUiDraw.cutPanel(graphics, statusX, layout.header().y() + 11,
+                statusWidth, 28, 8, tokens.surfaceRaised(), tokens.borderSubtle());
+        int statusColor = MobEditorClientState.communicating()
+                ? tokens.warning() : tokens.success();
+        graphics.fill(statusX + 10, layout.header().y() + 22,
+                statusX + 16, layout.header().y() + 28, statusColor);
+        ProjectSTextRenderer.drawMono(graphics,
+                MobEditorClientState.communicating() ? "SERVER  SYNCING" : "SERVER  ONLINE",
+                statusX + 23, layout.header().y() + 20, 7, statusColor);
+        graphics.fill(layout.property().x() + 12, layout.property().y(),
+                Math.min(layout.property().right() - 12, layout.property().x() + 72),
+                layout.property().y() + 1, tokens.accentPrimaryHover());
         renderPreview(graphics, mouseX, mouseY, tickProgress);
         super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
     }
@@ -1789,8 +1836,50 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress
     ) {
         if (layout == null || !layout.usable()) return;
+        renderScrollbars(graphics);
         renderMessage(graphics);
         if (tab == Tab.AI && draft != null) renderAiSummary(graphics);
+    }
+
+    private void renderScrollbars(GuiGraphicsExtractor graphics) {
+        MobEditorLayout.Bounds listViewport = MobListPanel.listViewport(layout.mobList());
+        int mobCount = filteredMobCount();
+        drawScrollbar(graphics, listViewport, mobListOffset * 48,
+                mobCount * 48, listViewport.height());
+
+        int propertyContent = propertyContentHeight();
+        drawScrollbar(graphics, layout.property(), propertyScroll,
+                propertyContent, layout.property().height());
+    }
+
+    private int filteredMobCount() {
+        String query = search == null ? searchQuery : search.getValue().trim();
+        return (int) MobEditorClientState.state().mobs().stream()
+                .filter(value -> MobEditorUiLogic.matches(
+                        value.id(), value.displayName(), value.tags(), query))
+                .filter(value -> MobEditorUiLogic.categoryMatches(
+                        value.category().name(), categoryFilter))
+                .count();
+    }
+
+    private static void drawScrollbar(
+            GuiGraphicsExtractor graphics, MobEditorLayout.Bounds viewport,
+            int scroll, int contentHeight, int viewportHeight
+    ) {
+        if (contentHeight <= viewportHeight || viewportHeight < 12) return;
+        var tokens = ProjectSThemeManager.get().activeTheme().tokens();
+        int trackY = viewport.y() + 5;
+        int trackHeight = Math.max(1, viewport.height() - 10);
+        int thumbHeight = Math.max(18,
+                trackHeight * viewportHeight / Math.max(1, contentHeight));
+        int maximum = Math.max(1, contentHeight - viewportHeight);
+        int travel = Math.max(0, trackHeight - thumbHeight);
+        int thumbY = trackY + Math.round(travel
+                * (Math.clamp(scroll, 0, maximum) / (float) maximum));
+        int x = viewport.right() - 5;
+        graphics.fill(x, trackY, x + 2, trackY + trackHeight, tokens.borderSubtle());
+        graphics.fill(x - 1, thumbY, x + 3, thumbY + thumbHeight,
+                tokens.accentPrimary());
     }
 
     private void renderPreview(
@@ -1835,12 +1924,16 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
                         .formatted(draft.appearance().scale(), entity.getBbWidth(),
                                 entity.getBbHeight(), entity.getEyeHeight(),
                                 draft.attack().range());
-                graphics.text(font, metrics, left + 8, previewContent.bottom() - 12,
-                        tokens.textMuted(), false);
+                ProjectSTextRenderer.drawMono(graphics, metrics,
+                        left + 8, previewContent.bottom() - 13, 7, tokens.textMuted());
             }
         } else {
-            graphics.centeredText(font, "プレビュー可能なLivingEntityを選択してください",
-                    (left + right) / 2, (top + previewContent.bottom()) / 2, tokens.danger());
+            String unavailable = "プレビュー可能なLivingEntityを選択してください";
+            int unavailableWidth = (int) Math.ceil(
+                    ProjectSTextRenderer.width(unavailable, 8, false));
+            ProjectSTextRenderer.draw(graphics, unavailable,
+                    (left + right - unavailableWidth) / 2.0,
+                    (top + previewContent.bottom()) / 2.0, 8, tokens.danger());
         }
     }
 
@@ -1849,18 +1942,17 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         int x = layout.property().x() + 4;
         int y = layout.actionBar().y() - 12;
         if (!localError.isBlank()) {
-            graphics.text(font, font.plainSubstrByWidth(localError,
-                            Math.max(1, layout.property().width() - 8)),
-                    x, y, tokens.danger(), false);
+            ProjectSTextRenderer.draw(graphics, ProjectSTextRenderer.fit(localError, 8,
+                            Math.max(1, layout.property().width() - 8), false),
+                    x, y, 8, tokens.danger());
             return;
         }
         String message = MobEditorClientState.state().message();
         if (message.isBlank()) return;
-        graphics.text(font, font.plainSubstrByWidth(message,
-                        Math.max(1, layout.property().width() - 8)),
-                x, y,
+        ProjectSTextRenderer.draw(graphics, ProjectSTextRenderer.fit(message, 8,
+                        Math.max(1, layout.property().width() - 8), false), x, y, 8,
                 MobEditorClientState.state().success()
-                        ? tokens.success() : tokens.danger(), false);
+                        ? tokens.success() : tokens.danger());
     }
 
     private void renderAiSummary(GuiGraphicsExtractor graphics) {
@@ -1869,15 +1961,15 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         int x = layout.property().x();
         int y = layout.property().y() + (compactProperty() ? 364 : 250) - propertyScroll;
         if (!propertyPanel.summaryVisible(y, 78)) return;
-        graphics.text(font, "挙動サマリー", x, y, tokens.warning(), false);
-        graphics.text(font, "%.1fブロック以内のプレイヤーを検出します。"
-                .formatted(ai.aggroRange()), x, y + 16, tokens.textMuted(), false);
-        graphics.text(font, "最大%.1fブロックまで追跡します。"
-                .formatted(ai.chaseRange()), x, y + 30, tokens.textMuted(), false);
-        graphics.text(font, "初期位置から%.1fブロックで帰還します。"
-                .formatted(ai.leashRange()), x, y + 44, tokens.textMuted(), false);
-        graphics.text(font, "HIGHEST_THREATは脅威値基盤未実装のため選択不可です。",
-                x, y + 62, tokens.warning(), false);
+        ProjectSTextRenderer.drawStrong(graphics, "挙動サマリー", x, y, 9, tokens.warning());
+        ProjectSTextRenderer.draw(graphics, "%.1fブロック以内のプレイヤーを検出します。"
+                .formatted(ai.aggroRange()), x, y + 16, 8, tokens.textMuted());
+        ProjectSTextRenderer.draw(graphics, "最大%.1fブロックまで追跡します。"
+                .formatted(ai.chaseRange()), x, y + 30, 8, tokens.textMuted());
+        ProjectSTextRenderer.draw(graphics, "初期位置から%.1fブロックで帰還します。"
+                .formatted(ai.leashRange()), x, y + 44, 8, tokens.textMuted());
+        ProjectSTextRenderer.draw(graphics, "HIGHEST_THREATは脅威値基盤未実装のため選択不可です。",
+                x, y + 62, 8, tokens.warning());
     }
 
     @Override
@@ -1914,6 +2006,15 @@ public final class MobEditorScreen extends ProjectSThemedScreen {
         if (super.mouseScrolled(mouseX, mouseY, horizontal, vertical)) return true;
         if (modal.isOpen()) return true;
         if (layout == null || !layout.usable()) return false;
+        if (layout.mobList().contains(mouseX, mouseY)) {
+            int maximum = Math.max(0, filteredMobCount() - visibleMobCount());
+            int next = Math.clamp(mobListOffset - (int) Math.signum(vertical), 0, maximum);
+            if (next != mobListOffset) {
+                mobListOffset = next;
+                refreshWidgets();
+            }
+            return true;
+        }
         if (layout.property().contains(mouseX, mouseY) && draft != null
                 && propertyContentHeight() > layout.property().height()) {
             propertyScroll = layout.clampPropertyScroll(propertyScroll - (int) (vertical * 20),

@@ -170,7 +170,7 @@ tasks.register('verifySourceSetBoundaries') {
 
 tasks.register('verifyStudioSourcePolicy') {
     group = 'verification'
-    description = 'Verifies Studio ownership, renderer-neutral presentation and legacy-menu registration.'
+    description = 'Verifies Studio ownership, renderer-neutral presentation and developer-menu boundaries.'
     doLast {
         def studioRoots = [
                 file('devtools/src/main/java/io/github/gyai/projects/devtools/studio'),
@@ -188,9 +188,15 @@ tasks.register('verifyStudioSourcePolicy') {
         }
         def screen = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSStudioScreen.java')
         if (!screen.isFile()) throw new GradleException('ProjectSStudioScreen must be DevTools-owned')
-        def menu = file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSDevToolsMenuScreen.java').text
-        ['ProjectS Studio', 'Skill Editor', 'Editor Frontend', 'UI Kit / Stage 1'].each { label ->
+        def menu = [
+                file('devtools/src/client/java/io/github/gyai/projects/devtools/ProjectSDevToolsMenuScreen.java'),
+                file('devtools/src/main/java/io/github/gyai/projects/devtools/DeveloperMenuRoot.java')
+        ].collect { it.text }.join('\n')
+        ['SERVER DEV MENU', 'BALANCE', 'MOB EDITOR', 'SKILL EDITOR'].each { label ->
             if (!menu.contains(label)) throw new GradleException("Developer Tools menu entry missing: ${label}")
+        }
+        ['ProjectS Studio', 'Editor Frontend', 'UI Kit / Stage 1'].each { label ->
+            if (menu.contains(label)) throw new GradleException("Retired Developer Tools menu entry returned: ${label}")
         }
         if (fileTree('minecraft-adapter/src').matching { include '**/fabric.mod.json' }.files) {
             throw new GradleException('Studio adapter boundary must remain library-only')

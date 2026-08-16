@@ -82,24 +82,24 @@ public final class StbFontFace implements AutoCloseable {
         if (!hasGlyph(key.codePoint())) return MissingGlyphRasterizer.rasterize(key);
         float scale = STBTruetype.stbtt_ScaleForPixelHeight(info, key.pixelSize());
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            IntBuffer width = stack.mallocInt(1);
-            IntBuffer height = stack.mallocInt(1);
-            IntBuffer offsetX = stack.mallocInt(1);
-            IntBuffer offsetY = stack.mallocInt(1);
-            ByteBuffer bitmap = STBTruetype.stbtt_GetCodepointBitmap(info, scale, scale, key.codePoint(),
-                    width, height, offsetX, offsetY);
-            if (bitmap == null || width.get(0) <= 0 || height.get(0) <= 0) {
-                if (bitmap != null) STBTruetype.stbtt_FreeBitmap(bitmap);
-                GlyphMetrics metrics = metrics(key);
-                return new RasterizedGlyph(key, metrics, 1, 1, offsetX.get(0), offsetY.get(0), new byte[]{0});
+            IntBuffer x0 = stack.mallocInt(1);
+            IntBuffer y0 = stack.mallocInt(1);
+            IntBuffer x1 = stack.mallocInt(1);
+            IntBuffer y1 = stack.mallocInt(1);
+            STBTruetype.stbtt_GetCodepointBitmapBox(info, key.codePoint(), scale, scale, x0, y0, x1, y1);
+            int bitmapWidth = Math.max(0, x1.get(0) - x0.get(0));
+            int bitmapHeight = Math.max(0, y1.get(0) - y0.get(0));
+            if (bitmapWidth == 0 || bitmapHeight == 0) {
+                return new RasterizedGlyph(key, metrics(key), 1, 1, x0.get(0), y0.get(0), new byte[]{0});
             }
-            int bitmapWidth = width.get(0);
-            int bitmapHeight = height.get(0);
+            int bitmapSize = Math.multiplyExact(bitmapWidth, bitmapHeight);
+            ByteBuffer bitmap = stack.malloc(bitmapSize);
+            STBTruetype.stbtt_MakeCodepointBitmap(info, bitmap, bitmapWidth, bitmapHeight,
+                    bitmapWidth, scale, scale, key.codePoint());
             byte[] alpha = new byte[bitmapWidth * bitmapHeight];
             bitmap.get(alpha);
-            STBTruetype.stbtt_FreeBitmap(bitmap);
             return new RasterizedGlyph(key, metrics(key), bitmapWidth, bitmapHeight,
-                    offsetX.get(0), offsetY.get(0), alpha);
+                    x0.get(0), y0.get(0), alpha);
         }
     }
 

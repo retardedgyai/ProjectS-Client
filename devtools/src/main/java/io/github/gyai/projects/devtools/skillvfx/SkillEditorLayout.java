@@ -3,13 +3,13 @@ package io.github.gyai.projects.devtools.skillvfx;
 import java.util.*;
 import java.util.function.ToIntFunction;
 
-/** Frontend-only fixed editor layout: tree | preview | inspector above timeline. */
+/** Frontend-only viewport-first layout: layers | live viewport | inspector above timeline. */
 public final class SkillEditorLayout {
  public record Rect(int x,int y,int width,int height){
   public boolean overlaps(Rect other){return x<other.x+other.width&&other.x<x+width&&y<other.y+other.height&&other.y<y+height;}
   public boolean within(Rect outer){return x>=outer.x&&y>=outer.y&&x+width<=outer.x+outer.width&&y+height<=outer.y+outer.height;}
  }
- public record Bounds(Rect tree,Rect preview,Rect inspector,Rect timeline){}
+ public record Bounds(Rect header,Rect tree,Rect preview,Rect inspector,Rect timeline){}
  /** Explicit, testable inspector header regions; text never determines their placement. */
  public record InspectorHeader(Rect title,Rect page,Rect previous,Rect next,Rect content){
   public boolean nonOverlapping(){return !title.overlaps(page)&&!title.overlaps(previous)&&!title.overlaps(next)&&!page.overlaps(previous)&&!page.overlaps(next)&&!previous.overlaps(next);}
@@ -49,14 +49,20 @@ public final class SkillEditorLayout {
  public int nextControlPointOffset(int size,int current){if(size<=2)return 0;int last=Math.max(0,size-2),normalized=Math.clamp(current,0,last);return normalized>=last?0:Math.min(last,normalized+2);}
  private int left=190,right=240,bottom=120;private boolean tree=true,preview=true,inspector=true,timeline=true;
  public Bounds bounds(int width,int height){
-  int w=Math.max(0,width),h=Math.max(0,height),top=Math.min(52,h),body=Math.max(0,h-top);
-  int b=timeline?Math.min(Math.max(0,body),Math.clamp(bottom,40,Math.max(40,body-80))):0;
-  int remaining=w;int l=tree?Math.min(remaining,Math.max(80,left)):0;remaining-=l;
-  int r=inspector?Math.min(remaining,Math.max(100,right)):0;remaining-=r;
-  int mid=preview?remaining:0;
-  if(!preview&&remaining>0&&tree)l+=remaining; else if(!preview&&remaining>0&&inspector)r+=remaining;
-  int panelHeight=Math.max(0,body-b);
-  return new Bounds(new Rect(0,top,l,panelHeight),new Rect(l,top,mid,panelHeight),new Rect(l+mid,top,r,panelHeight),new Rect(0,h-b,w,b));
+   int w=Math.max(0,width),h=Math.max(0,height),margin=Math.min(8,w/8),gap=Math.min(8,w/12),top=Math.min(52,h),body=Math.max(0,h-top);
+   int b=timeline?Math.min(Math.max(0,body),Math.clamp(bottom,40,Math.max(40,body-80))):0;
+   int inner=Math.max(0,w-margin*2),panelGaps=(tree?gap:0)+(inspector?gap:0);
+   int remaining=Math.max(0,inner-panelGaps);int l=tree?Math.min(remaining,Math.clamp(left,80,Math.max(80,inner*22/100))):0;remaining-=l;
+   int r=inspector?Math.min(remaining,Math.clamp(right,100,Math.max(100,inner*28/100))):0;remaining-=r;
+   int mid=preview?remaining:0;
+   if(!preview&&remaining>0&&tree)l+=remaining; else if(!preview&&remaining>0&&inspector)r+=remaining;
+   int panelHeight=Math.max(0,body-b),x=margin;
+   Rect treeRect=new Rect(x,top,l,panelHeight);x+=l+(tree?gap:0);
+   Rect previewRect=new Rect(x,top,mid,panelHeight);x+=mid+(inspector?gap:0);
+   Rect inspectorRect=new Rect(x,top,r,panelHeight);
+   return new Bounds(new Rect(margin,6,inner,40),treeRect,previewRect,inspectorRect,
+           new Rect(margin,h-b+(timeline?gap:0),inner,
+                   Math.max(0,b-(timeline?gap:0))));
  }
  /**
   * Fixed header geometry leaves a title row and a second pager row. This is a
@@ -105,19 +111,30 @@ public final class SkillEditorLayout {
  }
  /** Three fixed status lines prevent selection/error text from spilling into the Inspector. */
  public PreviewStatus previewStatus(Rect preview,String hook,String primitive,String anchor,boolean allowed,String localError,ToIntFunction<String> measurer){
-  int x=preview.x()+6,w=Math.max(0,preview.width()-12),y=previewHelp(preview,measurer).controlsY()+73;
+  int x=preview.x()+6,w=Math.max(0,preview.width()-12),y=previewHelp(preview,measurer).controlsY()+69;
   String current="現在: "+hook+(primitive.isBlank()?"":" > "+primitive);
   String state=localError==null||localError.isBlank()?(allowed?"状態: プレビュー可能":"状態: 権限なし"):(allowed?"状態: エラー: ":"状態: 権限なし / ")+localError;
   List<String> text=List.of(shorten(current,w,measurer),shorten("表示: "+anchor,w,measurer),shorten(state,w,measurer));
   ArrayList<PreviewStatusLine> lines=new ArrayList<>();for(int i=0;i<text.size();i++)lines.add(new PreviewStatusLine(text.get(i),new Rect(x,y+i*12,w,10)));
   return new PreviewStatus(List.copyOf(lines));
  }
- /** The central panel is controls, not a miniature viewport; it deliberately pages at small heights. */
- public PreviewPage previewPage(Rect preview,boolean detail,String hook,String primitive,String anchor,boolean allowed,String error,ToIntFunction<String> measurer){
-  int x=preview.x()+6,w=Math.max(1,preview.width()-12),top=preview.y()+26;Rect toggle=new Rect(x,top,Math.min(76,w),20);int y=top+24;ArrayList<PreviewStatusLine> lines=new ArrayList<>();
-  if(!detail){Rect world=new Rect(x,y+24,Math.min(132,w),20);String guide=shorten("ここは操作パネルです。未反映の下書きはワールドで確認します。",w,measurer);lines.add(new PreviewStatusLine(guide,new Rect(x,y,w,10)));lines.add(new PreviewStatusLine(shorten("現在: "+hook+(primitive.isBlank()?"":" > "+primitive),w,measurer),new Rect(x,y+48,w,10)));lines.add(new PreviewStatusLine(shorten("表示: "+anchor,w,measurer),new Rect(x,y+60,w,10)));String state=error==null||error.isBlank()?(allowed?"状態: プレビュー可能":"状態: 権限なし"):(allowed?"状態: エラー: ":"状態: 権限なし / ")+error;lines.add(new PreviewStatusLine(shorten(state,w,measurer),new Rect(x,y+72,w,10)));return new PreviewPage(false,toggle,world,zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),zero(x,y),List.copyOf(lines));}
-  Rect play=new Rect(x,y,Math.min(72,w),20),stop=new Rect(x+76,y,Math.min(48,Math.max(0,w-76)),20),restart=new Rect(x+128,y,Math.min(68,Math.max(0,w-128)),20);y+=24;Rect loop=new Rect(x,y,Math.min(72,w),20),speed=new Rect(x+76,y,Math.min(82,Math.max(0,w-76)),20);y+=24;Rect quality=new Rect(x,y,Math.min(76,w),20),anchorRect=new Rect(x+80,y,Math.min(100,Math.max(0,w-80)),20);return new PreviewPage(true,toggle,zero(x,y),play,stop,restart,loop,speed,quality,anchorRect,List.of());
- }
+  /** Controls frame the viewport instead of consuming its center stage. */
+  public PreviewPage previewPage(Rect preview,boolean detail,String hook,String primitive,String anchor,boolean allowed,String error,ToIntFunction<String> measurer){
+   int x=preview.x()+8,w=Math.max(1,preview.width()-16),top=preview.y()+28;
+   Rect toggle=new Rect(x,top,Math.min(92,w),20);ArrayList<PreviewStatusLine> lines=new ArrayList<>();
+   if(!detail){
+    int statusY=top+25;String state=error==null||error.isBlank()?(allowed?"状態: プレビュー可能":"状態: 権限なし"):(allowed?"状態: エラー: ":"状態: 権限なし / ")+error;
+    lines.add(new PreviewStatusLine(shorten("選択: "+hook+(primitive.isBlank()?"":" > "+primitive),w,measurer),new Rect(x,statusY,w,10)));
+    lines.add(new PreviewStatusLine(shorten("基準: "+anchor,w,measurer),new Rect(x,statusY+12,w,10)));
+    lines.add(new PreviewStatusLine(shorten(state,w,measurer),new Rect(x,statusY+24,w,10)));
+    Rect world=new Rect(x,Math.max(statusY+38,preview.y()+preview.height()-28),Math.min(176,w),20);
+    return new PreviewPage(false,toggle,world,zero(x,top),zero(x,top),zero(x,top),zero(x,top),zero(x,top),zero(x,top),zero(x,top),List.copyOf(lines));
+   }
+   int row=Math.max(top+24,preview.y()+preview.height()-52);
+   Rect play=new Rect(x,row,Math.min(72,w),20),stop=new Rect(x+76,row,Math.min(48,Math.max(0,w-76)),20),restart=new Rect(x+128,row,Math.min(68,Math.max(0,w-128)),20);
+   row+=24;Rect loop=new Rect(x,row,Math.min(72,w),20),speed=new Rect(x+76,row,Math.min(82,Math.max(0,w-76)),20),quality=new Rect(x+162,row,Math.min(76,Math.max(0,w-162)),20),anchorRect=new Rect(x+242,row,Math.min(100,Math.max(0,w-242)),20);
+   return new PreviewPage(true,toggle,zero(x,row),play,stop,restart,loop,speed,quality,anchorRect,List.of());
+  }
  private static Rect zero(int x,int y){return new Rect(x,y,0,0);}
  private static String shorten(String value,int maxWidth,ToIntFunction<String> measurer){
   if(measurer.applyAsInt(value)<=maxWidth)return value;

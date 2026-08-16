@@ -3,26 +3,80 @@ package io.github.gyai.projects.devtools;
 import io.github.gyai.projects.client.BalanceClientState;
 import io.github.gyai.projects.client.MobEditorClientState;
 import io.github.gyai.projects.client.ProjectSClient;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRenderProfile;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiScreenHost;
+import io.github.gyai.projects.ui.runtime.UiTheme;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
-/** Developer submenu. Authorization remains visible only as server response/state. */
-public final class ProjectSDevToolsMenuScreen extends Screen {
-    private final Screen parent;
-    private ProjectSDevToolsMenuScreen(Screen parent) { super(Component.literal("Developer Tools")); this.parent = parent; }
-    public static void open(Screen parent) { net.minecraft.client.Minecraft.getInstance().setScreen(new ProjectSDevToolsMenuScreen(parent)); }
-    @Override protected void init() {
-        int x=(width-220)/2,y=(height-220)/2;
-        addRenderableWidget(Button.builder(Component.literal("Server Dev Menu"), ignored -> { if (ProjectSClient.sendInput("OPEN_DEV_MENU")) minecraft.setScreen(null); }).bounds(x,y+28,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Balance"), ignored -> BalanceClientState.requestOpen(this)).bounds(x,y+54,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Mob Editor"), ignored -> MobEditorClientState.requestOpen(this)).bounds(x,y+80,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("UI Kit / Stage 1"), ignored -> minecraft.setScreen(new ProjectSUiKitPilotScreen(() -> minecraft.setScreen(this)))).bounds(x,y+106,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Editor Frontend"), ignored -> minecraft.setScreen(new ProjectSEditorScreen(this))).bounds(x,y+132,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Skill Editor"), ignored -> SkillEditorClientState.open(this)).bounds(x,y+156,220,20).build());
-        addRenderableWidget(Button.builder(Component.literal("ProjectS Studio"), ignored -> ProjectSStudioScreen.open(this)).bounds(x,y+182,220,20).build());
+/** In-world developer dashboard, opened and closed with Right Shift. */
+public final class ProjectSDevToolsMenuScreen extends MinecraftUiScreenHost {
+    private final DeveloperMenuRoot root;
+
+    public ProjectSDevToolsMenuScreen(Screen parent) {
+        this(parent, new DeveloperMenuRoot(
+                ProjectSDevToolsMenuScreen::openServerMenu,
+                ProjectSDevToolsMenuScreen::openBalance,
+                ProjectSDevToolsMenuScreen::openMobEditor,
+                ProjectSDevToolsMenuScreen::openSkillEditor));
     }
-    @Override public void extractRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float tickProgress){int x=(width-240)/2,y=(height-226)/2; graphics.fill(x,y,x+240,y+226,0xEE0B1017); graphics.outline(x,y,240,226,0xCC344351); graphics.centeredText(font,title,width/2,y+12,0xFFF3F7FA); super.extractRenderState(graphics,mouseX,mouseY,tickProgress);}
-    @Override public void onClose(){minecraft.setScreen(parent);} @Override public boolean isPauseScreen(){return false;}
+
+    private ProjectSDevToolsMenuScreen(Screen parent, DeveloperMenuRoot root) {
+        super("ProjectS Developer Overlay", root, UiTheme.dark(), () -> Minecraft.getInstance().setScreen(parent));
+        this.root = root;
+    }
+
+    public static void open(Screen parent) {
+        Minecraft.getInstance().setScreen(new ProjectSDevToolsMenuScreen(parent));
+    }
+
+    @Override
+    protected void init() {
+        super.init();
+        root.setConnected(minecraft != null && minecraft.getConnection() != null);
+    }
+
+    @Override
+    protected void onUiLayout(int width, int height) {
+        root.layout(width, height);
+    }
+
+    @Override
+    protected MinecraftUiRenderProfile uiRenderProfile() {
+        return MinecraftUiRenderProfile.CAELESTIA_SHELL;
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (event.key() == GLFW.GLFW_KEY_RIGHT_SHIFT) {
+            ProjectSDevTools.suppressDeveloperMenuOpen();
+            onClose();
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    private static void openServerMenu() {
+        Minecraft client = Minecraft.getInstance();
+        if (ProjectSClient.sendInput("OPEN_DEV_MENU")) {
+            client.setScreen(null);
+        }
+    }
+
+    private static void openBalance() {
+        Minecraft client = Minecraft.getInstance();
+        BalanceClientState.requestOpen(client.screen);
+    }
+
+    private static void openMobEditor() {
+        Minecraft client = Minecraft.getInstance();
+        MobEditorClientState.requestOpen(client.screen);
+    }
+
+    private static void openSkillEditor() {
+        Minecraft client = Minecraft.getInstance();
+        SkillEditorClientState.open(client.screen);
+    }
 }

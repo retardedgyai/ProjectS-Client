@@ -2,12 +2,12 @@ package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.theme.ProjectSTheme;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeTokens;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -31,8 +31,8 @@ public final class ProjectSCard extends AbstractWidget {
     ) {
         super(x, y, width, height, title);
         this.description = description == null ? Component.empty() : description;
-        bodyText = Minecraft.getInstance().font.plainSubstrByWidth(
-                this.description.getString(), width - 20);
+        bodyText = ProjectSTextRenderer.fit(this.description.getString(), 8,
+                width - 24, true);
         this.state = state;
         this.action = action;
         active = state != State.DISABLED && action != null;
@@ -100,11 +100,13 @@ public final class ProjectSCard extends AbstractWidget {
             case DANGER -> tokens.danger();
             default -> tokens.textPrimary();
         };
-        graphics.text(Minecraft.getInstance().font, getMessage(),
-                titleX, getY() + 9, textColor, false);
-        graphics.text(Minecraft.getInstance().font, bodyText,
-                getX() + 12, getY() + 27,
-                state == State.DISABLED ? tokens.textDisabled() : tokens.textMuted(), false);
+        String title = ProjectSTextRenderer.fit(getMessage().getString(), 10,
+                getRight() - titleX - 12, false);
+        ProjectSTextRenderer.drawStrong(graphics, title,
+                titleX, getY() + 8, 10, textColor);
+        ProjectSTextRenderer.drawMono(graphics, bodyText,
+                getX() + 12, getY() + 27, 8,
+                state == State.DISABLED ? tokens.textDisabled() : tokens.textMuted());
         if (isFocused()) {
             ProjectSUiDraw.focusGlow(graphics, getX(), getY(), width, height,
                     tokens.focusGlow(), tokens.borderSelected());

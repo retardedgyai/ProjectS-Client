@@ -5,9 +5,15 @@ import io.github.gyai.projects.client.ui.icon.ProjectSIconColorRole;
 import io.github.gyai.projects.client.ui.icon.ProjectSIconState;
 import io.github.gyai.projects.client.ui.icon.ProjectSIconTint;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeTokens;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRenderProfile;
+import io.github.gyai.projects.minecraft.adapter.MinecraftUiRuntimeResources;
+import io.github.gyai.projects.ui.runtime.IconKey;
+import io.github.gyai.projects.ui.runtime.UiColor;
+import io.github.gyai.projects.ui.runtime.UiRect;
+import io.github.gyai.projects.ui.runtime.icon.IconState;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
-/** Selects cached atlas sprites or the allocation-free code fallback. */
+/** Routes canonical icons through the antialiased Shell atlas with legacy fail-safe rendering. */
 public final class ProjectSIconRenderer {
     /** Legacy source compatibility. New code must use {@link ProjectSIcon}. */
     @Deprecated
@@ -78,6 +84,13 @@ public final class ProjectSIconRenderer {
                     (int) (System.nanoTime() / 100_000_000L));
             return;
         }
+        MinecraftUiRuntimeResources resources = MinecraftUiRuntimeResources.currentOrNull();
+        if (resources != null && resources.clientShellVisualsReady()) {
+            resources.renderIcon(graphics, new UiRect(x, y, size, size), shellKey(icon),
+                    IconState.NORMAL, UiColor.argb(color),
+                    MinecraftUiRenderProfile.CAELESTIA_SHELL);
+            return;
+        }
         if (!ProjectSIconAtlas.draw(graphics, icon, x, y, size, color)) {
             ProjectSIconShapes.draw(graphics, icon, x, y, size, color, 0);
         }
@@ -87,8 +100,40 @@ public final class ProjectSIconRenderer {
             GuiGraphicsExtractor graphics, int x, int y, int size,
             int color, int frame
     ) {
+        MinecraftUiRuntimeResources resources = MinecraftUiRuntimeResources.currentOrNull();
+        if (resources != null && resources.clientShellVisualsReady()) {
+            resources.renderIcon(graphics, new UiRect(x, y, size, size), IconKey.LOADER,
+                    IconState.NORMAL, UiColor.argb(color),
+                    MinecraftUiRenderProfile.CAELESTIA_SHELL);
+            return;
+        }
         ProjectSIconShapes.draw(graphics, ProjectSIcon.LOADING,
                 x, y, size, color, frame);
+    }
+
+    private static IconKey shellKey(ProjectSIcon icon) {
+        return switch (icon) {
+            case PLAY, PAUSE, STOP, TEST -> IconKey.PLAY;
+            case CLOSE, REMOVE, DELETE, DISABLED -> IconKey.CLOSE;
+            case APPLY, SAVE, SUCCESS, CHECKBOX_CHECKED -> IconKey.CHECK;
+            case RELOAD, RESET, UNDO, REDO -> IconKey.RETRY;
+            case WARNING, ERROR -> IconKey.WARNING;
+            case VISIBLE, HIDDEN, HEAD, HEAD_VIEW, EYE_LINE -> IconKey.EYE;
+            case LOCK, UNLOCK, SHIELD, ARMOR -> IconKey.SHIELD;
+            case FAVORITE, FAVORITE_FILLED, AI, MAGIC, HEAL, CRITICAL -> IconKey.SPARKLE;
+            case SEARCH, BOOK, FOLDER, FILE -> IconKey.LIBRARY;
+            case SETTINGS, FILTER, SORT, STATS, APPEARANCE, PALETTE, COLOR -> IconKey.SLIDERS;
+            case BACK, COLLAPSE, LEFT_VIEW -> IconKey.CHEVRON_RIGHT;
+            case NEXT, DROPDOWN, EXPAND, RIGHT_VIEW -> IconKey.CHEVRON_DOWN;
+            case UPLOAD, DOWNLOAD, ARROW -> IconKey.ARROW_RIGHT;
+            case CAMERA, GRID, HITBOX, FRONT_VIEW, BACK_VIEW, BACKGROUND -> IconKey.MONITOR;
+            case INFO, INFO_CIRCLE, HELP -> IconKey.INFO;
+            case LOADING -> IconKey.LOADER;
+            case SCRIPT, VARIABLE, CONDITION, EVENT, BEHAVIOR, GOAL -> IconKey.KEYBOARD;
+            case COPY, DROPS, EQUIPMENT, LAYERS -> IconKey.LAYERS;
+            case ADD, EDIT, MORE, PINNED -> IconKey.SPARKLE;
+            default -> IconKey.SHIELD;
+        };
     }
 
     @Deprecated

@@ -2,6 +2,7 @@ package io.github.gyai.projects.client.ui.mobeditor;
 
 import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -51,7 +52,8 @@ public final class MobPreviewPanel {
         var tokens = theme.tokens();
         ProjectSUiDraw.cutPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
                 theme.metrics().cornerCut(), dark ? tokens.surface() : tokens.surfaceAlt(), tokens.borderStrong());
-        graphics.text(font, title, bounds.x() + 8, bounds.y() + 8, tokens.textPrimary(), false);
+        ProjectSTextRenderer.drawStrong(graphics, title,
+                bounds.x() + 10, bounds.y() + 8, 9, tokens.textPrimary());
         if (!grid) return;
         MobEditorLayout.Bounds content = contentBounds(bounds, controlCount);
         for (int x = bounds.x() + 20; x < bounds.right(); x += 20) {

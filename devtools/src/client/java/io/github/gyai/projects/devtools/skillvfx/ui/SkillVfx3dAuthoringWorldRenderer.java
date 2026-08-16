@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import io.github.gyai.projects.client.AbilityVfxLocalPreview;
 import io.github.gyai.projects.client.vfx.AbilityVfx;
+import io.github.gyai.projects.devtools.SkillEditorScreen;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxDirectAuthoring;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxModel;
 import io.github.gyai.projects.devtools.skillvfx.MotionAuthoringPresentation;
@@ -29,20 +30,40 @@ public final class SkillVfx3dAuthoringWorldRenderer {
     private static void render(LevelRenderContext context) {
         try {
             Minecraft mc = Minecraft.getInstance();
-            if (!(mc.screen instanceof SkillVfx3dAuthoringScreen screen)
-                    || mc.player == null || mc.level == null) return;
+            if (mc.player == null || mc.level == null) return;
             CameraRenderState camera = context.levelState().cameraRenderState;
             if (camera == null || camera.pos == null) return;
-            screen.updateCamera(camera);
+            SkillEditorScreen owner;
+            AbilityVfx.Frame frame;
+            SkillVfxDirectAuthoring.MotionHandleTarget target;
+            SkillVfxDirectAuthoring.AuthoringTool tool;
+            if (mc.screen instanceof SkillVfx3dAuthoringScreen screen) {
+                screen.updateCamera(camera);
+                owner = screen.owner();
+                frame = screen.frame();
+                target = screen.motionHandleTarget();
+                tool = screen.authoringTool();
+            } else if (mc.screen instanceof SkillEditorScreen editor
+                    && editor.embeddedAuthoringActive()) {
+                editor.updateEmbeddedCamera(camera);
+                owner = editor;
+                frame = editor.embeddedAuthoringFrame();
+                target = editor.embeddedMotionHandleTarget();
+                tool = editor.embeddedAuthoringTool();
+            } else return;
 
-            SkillVfxModel.Primitive primitive = screen.owner().authoringPrimitive();
-            AbilityVfx.Frame frame = screen.frame();
+            SkillVfxModel.Primitive primitive = owner.authoringPrimitive();
             if (primitive == null || frame == null) return;
-            SkillVfxModel.GameplayAction action = screen.owner().authoringAction();
-            double progress = screen.owner().authoringProgress();
+            SkillVfxModel.GameplayAction action = owner.authoringAction();
+            double progress = owner.authoringProgress();
             MotionAuthoringPresentation.GuideState guide = MotionAuthoringPresentation.guide(primitive, frame, action, progress, AbilityVfx.Quality.HIGH);
             if (!guide.supported()) return;
             List<AbilityVfx.Command> commands = new ArrayList<>();
+            for (SkillVfxDirectAuthoring.PrimitiveTarget candidate : owner.authoringTargets()) {
+                if (!candidate.primitive().id().equals(primitive.id())) add(commands,
+                        SkillVfxDirectAuthoring.guide(candidate.primitive(), frame, candidate.action()),
+                        new AbilityVfx.Color(90, 125, 115, 70), .01);
+            }
             add(commands, guide.fullShape(), new AbilityVfx.Color(75, 220, 255, 105), .012);
             add(commands, guide.remaining(), new AbilityVfx.Color(105, 120, 165, 115), .014);
             add(commands, guide.visible(), new AbilityVfx.Color(255, 235, 80, 235), .02);
@@ -52,7 +73,7 @@ public final class SkillVfx3dAuthoringWorldRenderer {
 
             AbilityVfx.Vec origin = frame.world(new AbilityVfx.Vec(
                     primitive.offset().x(), primitive.offset().y(), primitive.offset().z()));
-            if (origin != null) {
+            if (origin != null && tool == SkillVfxDirectAuthoring.AuthoringTool.MOVE) {
                 commands.add(line(origin, frame.world(new AbilityVfx.Vec(
                         primitive.offset().x() + 1, primitive.offset().y(), primitive.offset().z())), 255, 80, 80));
                 commands.add(line(origin, frame.world(new AbilityVfx.Vec(
@@ -60,8 +81,8 @@ public final class SkillVfx3dAuthoringWorldRenderer {
                 commands.add(line(origin, frame.world(new AbilityVfx.Vec(
                         primitive.offset().x(), primitive.offset().y(), primitive.offset().z() + 1)), 80, 130, 255));
             }
-            List<SkillVfxDirectAuthoring.Handle> handles = SkillVfxDirectAuthoring.selectableMotionHandles(
-                    primitive, frame, action, progress, screen.motionHandleTarget());
+            List<SkillVfxDirectAuthoring.Handle> handles = SkillVfxDirectAuthoring.toolHandles(
+                    primitive, frame, action, progress, target, tool);
             for (SkillVfxDirectAuthoring.Handle handle : handles) {
                 AbilityVfx.Vec at = new AbilityVfx.Vec(
                         handle.position().x(), handle.position().y(), handle.position().z());

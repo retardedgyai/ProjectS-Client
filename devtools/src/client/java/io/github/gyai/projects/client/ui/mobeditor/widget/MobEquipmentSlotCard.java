@@ -3,9 +3,9 @@ package io.github.gyai.projects.client.ui.mobeditor.widget;
 import io.github.gyai.projects.client.MobEditorData;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -36,8 +36,8 @@ public final class MobEquipmentSlotCard extends AbstractButton {
         active = enabled;
         String raw = equipment.source() == MobEditorData.EquipmentSource.VANILLA_ITEM
                 ? equipment.material() : equipment.referenceId();
-        item = Minecraft.getInstance().font.plainSubstrByWidth(
-                raw.isBlank() ? "未設定" : raw, Math.max(30, width - 38));
+        item = ProjectSTextRenderer.fit(raw.isBlank() ? "未設定" : raw,
+                8, Math.max(30, width - 38), true);
     }
 
     @Override
@@ -57,19 +57,19 @@ public final class MobEquipmentSlotCard extends AbstractButton {
                 selected ? tokens.borderSelected() : tokens.borderSubtle());
         ProjectSIconRenderer.draw(graphics, active ? icon : ProjectSIcon.DISABLED,
                 getX() + 8, getY() + 8, 15, tokens, !active, selected);
-        graphics.text(Minecraft.getInstance().font, slot.name(),
-                getX() + 30, getY() + 6,
-                active ? tokens.textPrimary() : tokens.textDisabled(), false);
-        graphics.text(Minecraft.getInstance().font, equipment.source().name(),
-                getX() + 30, getY() + 18, tokens.textMuted(), false);
-        graphics.text(Minecraft.getInstance().font, item,
-                getX() + 8, getY() + 34, tokens.textSecondary(), false);
+        ProjectSTextRenderer.drawStrong(graphics, slot.name(),
+                getX() + 30, getY() + 5, 9,
+                active ? tokens.textPrimary() : tokens.textDisabled());
+        ProjectSTextRenderer.drawMono(graphics, equipment.source().name(),
+                getX() + 30, getY() + 18, 7, tokens.textMuted());
+        ProjectSTextRenderer.drawMono(graphics, item,
+                getX() + 8, getY() + 33, 8, tokens.textSecondary());
         String flags = (equipment.visible() ? "表示" : "非表示")
                 + (equipment.glint() ? " / Glint" : "");
-        int flagsWidth = Minecraft.getInstance().font.width(flags);
-        graphics.text(Minecraft.getInstance().font, flags,
-                getRight() - flagsWidth - 7, getY() + 6,
-                equipment.visible() ? tokens.success() : tokens.textDisabled(), false);
+        int flagsWidth = (int) Math.ceil(ProjectSTextRenderer.width(flags, 8, false));
+        ProjectSTextRenderer.draw(graphics, flags,
+                getRight() - flagsWidth - 7, getY() + 6, 8,
+                equipment.visible() ? tokens.success() : tokens.textDisabled());
     }
 
     @Override

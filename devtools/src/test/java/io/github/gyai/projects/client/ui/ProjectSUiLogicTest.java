@@ -139,8 +139,8 @@ public final class ProjectSUiLogicTest {
         var metrics = theme.metrics();
         assert ProjectSColorMath.brightness(tokens.accentPrimary())
                 < ProjectSColorMath.brightness(tokens.accentPrimaryHover());
-        assert ProjectSColorMath.brightness(tokens.accentPrimary()) >= 75;
-        assert ProjectSColorMath.brightness(tokens.accentPrimary()) <= 95;
+        assert ProjectSColorMath.brightness(tokens.accentPrimary()) >= 180;
+        assert ProjectSColorMath.brightness(tokens.accentPrimary()) <= 240;
         assert ProjectSColorMath.brightness(tokens.accentPrimaryPressed())
                 < ProjectSColorMath.brightness(tokens.accentPrimary());
         assert ProjectSColorMath.brightness(tokens.border())
@@ -156,11 +156,11 @@ public final class ProjectSUiLogicTest {
         assert metrics.inputCornerCut() <= 2;
         assert metrics.iconCornerCut() > metrics.inputCornerCut();
         assert ProjectSColorMath.brightness(tokens.background())
-                < ProjectSColorMath.brightness(tokens.surface());
-        assert ProjectSColorMath.brightness(tokens.surface())
                 < ProjectSColorMath.brightness(tokens.surfaceAlt());
         assert ProjectSColorMath.brightness(tokens.surfaceAlt())
-                < ProjectSColorMath.brightness(tokens.surfaceInput());
+                < ProjectSColorMath.brightness(tokens.surface());
+        assert ProjectSColorMath.brightness(tokens.surface())
+                < ProjectSColorMath.brightness(tokens.surfaceRaised());
     }
 
     private static void numberLogic() {

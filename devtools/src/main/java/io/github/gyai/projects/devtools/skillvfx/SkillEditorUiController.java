@@ -34,13 +34,21 @@ public final class SkillEditorUiController {
     }
     public static List<SkillEditorLayout.InspectorProperty> inspectorProperties(SkillVfxModel.Primitive primitive, boolean editable, boolean motionEditable) {
         ArrayList<SkillEditorLayout.InspectorProperty> out=new ArrayList<>(); var appearance=appearance(primitive,editable);
+        var descriptors=AbilityVisualPropertySchemas.descriptors(primitive.type());
+        var byId=new LinkedHashMap<String,io.github.gyai.projects.editor.core.PropertyDescriptor<AbilityVisualEditorDocument,?>>();
+        for(var descriptor:descriptors)byId.put(descriptor.id(),descriptor);
+        for(String id:AbilityVisualPropertySchemas.all().get(primitive.type())){var descriptor=byId.remove(id);if(descriptor!=null)addInspectorProperty(out,primitive,descriptor);}
         out.add(new SkillEditorLayout.InspectorProperty("appearance","見た目",appearance.guidance(),18));
-        for(var descriptor:AbilityVisualPropertySchemas.descriptors(primitive.type())) { int input=descriptor.id().equals("controlPoints")?20+Math.min(2,primitive.controls().size())*30:18; out.add(new SkillEditorLayout.InspectorProperty(descriptor.id(),descriptor.displayName(),AbilityVisualPropertySchemas.description(descriptor.id()),input)); }
+        for(String id:List.of("argb","opacity","width","density","seed","offsetX","offsetY","offsetZ","yaw")){var descriptor=byId.remove(id);if(descriptor!=null)addInspectorProperty(out,primitive,descriptor);}
+        byId.remove("delayTicks");byId.remove("durationTicks");
+        for(var descriptor:byId.values())addInspectorProperty(out,primitive,descriptor);
         for (var motion : MotionAuthoringPresentation.properties(primitive, motionEditable)) {
             out.add(new SkillEditorLayout.InspectorProperty(motion.id(), motion.label(), motion.help(), motion.inputHeight()));
         }
+        for(String id:List.of("delayTicks","durationTicks")){var descriptor=descriptors.stream().filter(value->value.id().equals(id)).findFirst().orElse(null);if(descriptor!=null){out.removeIf(value->value.id().equals(id));addInspectorProperty(out,primitive,descriptor);}}
         return List.copyOf(out);
     }
+    private static void addInspectorProperty(List<SkillEditorLayout.InspectorProperty> out,SkillVfxModel.Primitive primitive,io.github.gyai.projects.editor.core.PropertyDescriptor<AbilityVisualEditorDocument,?> descriptor){int input=descriptor.id().equals("controlPoints")?20+Math.min(2,primitive.controls().size())*30:18;out.add(new SkillEditorLayout.InspectorProperty(descriptor.id(),descriptor.displayName(),AbilityVisualPropertySchemas.description(descriptor.id()),input));}
     public static ScalarMode mode(SkillVfxModel.Scalar scalar) {
         return scalar instanceof SkillVfxModel.FromGameplay ? ScalarMode.FROM_GAMEPLAY : ScalarMode.LITERAL;
     }

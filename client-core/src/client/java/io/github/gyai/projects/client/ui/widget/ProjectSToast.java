@@ -2,10 +2,10 @@ package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -45,7 +45,7 @@ public final class ProjectSToast {
         int x = graphics.guiWidth() - width - 10;
         int y = 10;
         for (Entry entry : entries) {
-            entry.fit(Minecraft.getInstance().font, width);
+            entry.fit(width);
             double alpha = ProjectSToastState.alpha(
                     now, entry.createdAt, FADE_NANOS, entry.visibleNanos);
             int fill = ProjectSColorMath.withAlpha(tokens.surfaceRaised(),
@@ -60,13 +60,11 @@ public final class ProjectSToast {
                     y + 48 - theme.metrics().cornerCut(), stateColor);
             ProjectSIconRenderer.drawTinted(graphics, icon(entry.kind),
                     x + 9, y + 8, 12, stateColor);
-            graphics.text(Minecraft.getInstance().font,
-                    entry.clippedTitle,
-                    x + 26, y + 9, stateColor, false);
-            graphics.text(Minecraft.getInstance().font,
-                    entry.clippedBody,
-                    x + 10, y + 27, ProjectSColorMath.withAlpha(
-                            tokens.textMuted(), (int) (255 * alpha)), false);
+            ProjectSTextRenderer.drawStrong(graphics, entry.clippedTitle,
+                    x + 26, y + 8, 9, stateColor);
+            ProjectSTextRenderer.draw(graphics, entry.clippedBody,
+                    x + 10, y + 26, 8, ProjectSColorMath.withAlpha(
+                            tokens.textMuted(), (int) (255 * alpha)));
             ProjectSIconRenderer.drawTinted(graphics, ProjectSIcon.CLOSE,
                     x + width - 18, y + 8, 10,
                     ProjectSColorMath.withAlpha(tokens.textMuted(),
@@ -142,11 +140,11 @@ public final class ProjectSToast {
             this.visibleNanos = visibleNanos;
         }
 
-        private void fit(net.minecraft.client.gui.Font font, int width) {
+        private void fit(int width) {
             if (fittedWidth == width) return;
             fittedWidth = width;
-            clippedTitle = font.plainSubstrByWidth(titleText, width - 52);
-            clippedBody = font.plainSubstrByWidth(bodyText, width - 24);
+            clippedTitle = ProjectSTextRenderer.fit(titleText, 9, width - 52, false);
+            clippedBody = ProjectSTextRenderer.fit(bodyText, 8, width - 24, false);
         }
     }
 }

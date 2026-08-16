@@ -1,7 +1,6 @@
 package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
@@ -36,7 +35,7 @@ public final class ProjectSIconButton extends ProjectSButton {
         this.tooltipText = tooltip;
         this.disabledReason = disabledReason;
         setMessage(tooltip);
-        setTooltip(Tooltip.create(tooltip));
+        tooltip(tooltip, Component.empty(), ProjectSTooltip.Tone.NORMAL);
     }
 
     /** @deprecated Use {@link ProjectSIcon}. */
@@ -73,7 +72,7 @@ public final class ProjectSIconButton extends ProjectSButton {
         this.tooltipText = tooltip;
         disabledReason = null;
         setMessage(tooltip);
-        setTooltip(Tooltip.create(tooltip));
+        tooltip(tooltip, Component.empty(), ProjectSTooltip.Tone.NORMAL);
     }
 
     /** @deprecated Use {@link ProjectSIcon}. */
@@ -88,8 +87,15 @@ public final class ProjectSIconButton extends ProjectSButton {
 
     public ProjectSIconButton enabled(boolean enabled) {
         active = enabled;
-        setTooltip(Tooltip.create(!enabled && disabledReason != null
-                ? disabledReason : tooltipText));
+        tooltip(!enabled && disabledReason != null ? disabledReason : tooltipText,
+                Component.empty(), !enabled && disabledReason != null
+                        ? ProjectSTooltip.Tone.WARNING : ProjectSTooltip.Tone.NORMAL);
+        return this;
+    }
+
+    public ProjectSIconButton tooltip(Component value) {
+        setMessage(value);
+        tooltip(value, Component.empty(), ProjectSTooltip.Tone.NORMAL);
         return this;
     }
 

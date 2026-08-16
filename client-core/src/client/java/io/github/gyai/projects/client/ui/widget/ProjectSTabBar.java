@@ -2,8 +2,9 @@ package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -52,8 +53,8 @@ public final class ProjectSTabBar extends AbstractWidget {
         for (int index = 0; index < tabs.size(); index++) {
             Tab tab = tabs.get(index);
             int iconSpace = tab.icon() == null ? 0 : 16;
-            clippedLabels[index] = Minecraft.getInstance().font.plainSubstrByWidth(
-                    tab.label().getString(), tabWidth - iconSpace - 8);
+            clippedLabels[index] = ProjectSTextRenderer.fit(tab.label().getString(), 9,
+                    tabWidth - iconSpace - 8, false);
         }
         this.selected = Math.clamp(selected, 0, tabs.size() - 1);
         this.changed = changed == null ? ignored -> { } : changed;
@@ -64,19 +65,25 @@ public final class ProjectSTabBar extends AbstractWidget {
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickProgress
     ) {
         var tokens = ProjectSThemeManager.get().activeTheme().tokens();
+        var theme = ProjectSThemeManager.get().activeTheme();
+        ProjectSUiDraw.cutPanel(graphics, getX(), getY(), width, height,
+                theme.metrics().controlCornerCut(), tokens.surfaceAlt(), tokens.borderSubtle());
         int tabWidth = Math.max(1, width / tabs.size());
         for (int index = 0; index < tabs.size(); index++) {
             Tab tab = tabs.get(index);
             int x = getX() + tabWidth * index;
             boolean hovered = mouseX >= x && mouseX < x + tabWidth
                     && mouseY >= getY() && mouseY < getBottom();
-            if (hovered) {
+            if (index == selected) {
+                graphics.fill(x + 1, getY() + 1, x + tabWidth - 1,
+                        getBottom() - 2, tokens.surfaceRaised());
+            } else if (hovered) {
                 graphics.fill(x, getY(), x + tabWidth, getBottom(), tokens.surfaceHover());
             }
             int color = !tab.enabled() ? tokens.textDisabled()
                     : index == selected ? tokens.textPrimary() : tokens.textSecondary();
             int iconSpace = tab.icon() == null ? 0 : 16;
-            int textWidth = Minecraft.getInstance().font.width(clippedLabels[index]);
+            int textWidth = (int) Math.ceil(ProjectSTextRenderer.width(clippedLabels[index], 9, true));
             int contentX = x + Math.max(4, (tabWidth - textWidth - iconSpace) / 2);
             if (tab.icon() != null) {
                 ProjectSIconRenderer.draw(graphics, tab.icon(),
@@ -84,13 +91,8 @@ public final class ProjectSTabBar extends AbstractWidget {
                         !tab.enabled(), index == selected);
                 contentX += 16;
             }
-            graphics.text(Minecraft.getInstance().font,
-                    clippedLabels[index],
-                    contentX, getY() + (height - 8) / 2, color, false);
-            if (hovered && tab.tooltip() != null) {
-                graphics.setTooltipForNextFrame(Minecraft.getInstance().font,
-                        tab.tooltip(), mouseX, mouseY);
-            }
+            ProjectSTextRenderer.drawStrong(graphics, clippedLabels[index],
+                    contentX, getY() + (height - 10) / 2.0, 9, color);
         }
         double targetX = getX() + tabWidth * selected;
         long now = System.nanoTime();

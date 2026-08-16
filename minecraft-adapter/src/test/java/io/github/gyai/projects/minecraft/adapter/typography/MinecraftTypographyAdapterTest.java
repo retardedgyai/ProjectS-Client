@@ -32,6 +32,13 @@ public final class MinecraftTypographyAdapterTest {
             check(latinGlyph.width() > 0 && latinGlyph.height() > 0 && !latinGlyph.isMissing(), "STB Latin raster");
             check(japaneseGlyph.width() > 0 && japaneseGlyph.height() > 0 && !japaneseGlyph.isMissing(), "STB Japanese raster");
             check(missingGlyph.isMissing() && missingGlyph.width() > 0, "missing glyph raster");
+            String editorLabels = "いつ出すレイヤー形を確認見た目動き開始表示時間新しい演出";
+            for (int pass = 0; pass < 8; pass++) {
+                for (int codePoint : editorLabels.codePoints().toArray()) {
+                    RasterizedGlyph glyph = registry.rasterize(runtime.glyphKey(TextStyle.body(), codePoint));
+                    check(glyph.width() > 0 && glyph.height() > 0, "repeated editor glyph raster");
+                }
+            }
 
             StbGlyphAtlas atlas = new StbGlyphAtlas(registry, 1, 2);
             check(atlas.resolve(latin).isPresent() && atlas.resolve(japanese).isPresent(), "bounded atlas stores glyphs");
@@ -58,7 +65,7 @@ public final class MinecraftTypographyAdapterTest {
         boundedLayoutAndUploadBatches();
         check(MinecraftGlyphAtlasTextureStore.physicalCoordinate(10.5, -1, 2) == 20,
                 "supersampled glyph coordinates retain half-pixel placement");
-        System.out.println("MINECRAFT_TYPOGRAPHY_ADAPTER_TEST_PASS: stb latin japanese missing atlas renderer reload offline");
+        System.out.println("MINECRAFT_TYPOGRAPHY_ADAPTER_TEST_PASS: stb latin japanese repeated editor labels missing atlas renderer reload offline");
     }
 
     private static void stbMetricsShareLayout(FontResourceSource source) throws Exception {

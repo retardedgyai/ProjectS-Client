@@ -5,8 +5,8 @@ import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.mobeditor.MobEditorUiLogic;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -40,9 +40,10 @@ public final class MobLibraryEntry extends AbstractButton {
         entityIcon = MobEditorUiLogic.entityIcon(mob.entityType(), mob.category().name());
         categoryIcon = MobEditorUiLogic.categoryIcon(mob.category().name());
         badge = MobEditorUiLogic.categoryBadge(mob.category().name());
-        var font = Minecraft.getInstance().font;
-        displayName = font.plainSubstrByWidth(mob.displayName(), Math.max(24, width - 48));
-        id = font.plainSubstrByWidth(mob.id(), Math.max(24, width - 48));
+        displayName = ProjectSTextRenderer.fit(mob.displayName(), 9,
+                Math.max(24, width - 48), false);
+        id = ProjectSTextRenderer.fit(mob.id(), 7,
+                Math.max(24, width - 48), true);
     }
 
     @Override
@@ -68,22 +69,22 @@ public final class MobLibraryEntry extends AbstractButton {
         ProjectSIconRenderer.draw(graphics, entityIcon,
                 getX() + 8, getY() + 8, 18, tokens, !mob.enabled(), selected);
         int primary = mob.enabled() ? tokens.textPrimary() : tokens.textDisabled();
-        graphics.text(Minecraft.getInstance().font, displayName,
-                getX() + 32, getY() + 6, primary, false);
-        graphics.text(Minecraft.getInstance().font, id,
-                getX() + 32, getY() + 18, tokens.textMuted(), false);
+        ProjectSTextRenderer.drawStrong(graphics, displayName,
+                getX() + 32, getY() + 5, 9, primary);
+        ProjectSTextRenderer.drawMono(graphics, id,
+                getX() + 32, getY() + 18, 7, tokens.textMuted());
         ProjectSIconRenderer.draw(graphics, categoryIcon,
                 getX() + 32, getY() + 31, 9, tokens, !mob.enabled(), selected);
-        graphics.text(Minecraft.getInstance().font, badge,
-                getX() + 44, getY() + 31,
-                mob.enabled() ? tokens.textSecondary() : tokens.textDisabled(), false);
+        ProjectSTextRenderer.draw(graphics, badge,
+                getX() + 44, getY() + 30, 7,
+                mob.enabled() ? tokens.textSecondary() : tokens.textDisabled());
         String state = mob.enabled() ? "有効" : "無効";
         if (selected && dirty) state = "未保存";
-        int stateWidth = Minecraft.getInstance().font.width(state);
-        graphics.text(Minecraft.getInstance().font, state,
-                getRight() - stateWidth - 7, getY() + 31,
+        int stateWidth = (int) Math.ceil(ProjectSTextRenderer.width(state, 7, false));
+        ProjectSTextRenderer.draw(graphics, state,
+                getRight() - stateWidth - 7, getY() + 30, 7,
                 selected && dirty ? tokens.warning()
-                        : mob.enabled() ? tokens.success() : tokens.textDisabled(), false);
+                        : mob.enabled() ? tokens.success() : tokens.textDisabled());
     }
 
     @Override

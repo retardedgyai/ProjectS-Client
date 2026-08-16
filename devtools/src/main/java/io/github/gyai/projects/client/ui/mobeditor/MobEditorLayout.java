@@ -13,11 +13,11 @@ public final class MobEditorLayout {
         }
     }
 
-    private static final int MARGIN = 8;
-    private static final int GUTTER = 8;
-    private static final int HEADER_HEIGHT = 26;
-    private static final int TAB_HEIGHT = 22;
-    private static final int ACTION_HEIGHT = 26;
+    private static final int MARGIN = 16;
+    private static final int GUTTER = 12;
+    private static final int HEADER_HEIGHT = 48;
+    private static final int TAB_HEIGHT = 30;
+    private static final int ACTION_HEIGHT = 34;
     private final Bounds header;
     private final Bounds mobList;
     private final Bounds tabs;
@@ -51,8 +51,8 @@ public final class MobEditorLayout {
             previewWidth = Math.max(1, available * 30 / 100);
             propertyWidth = Math.max(1, available - mobWidth - previewWidth);
         } else {
-            mobWidth = Math.clamp(available / 4, 80, 210);
-            previewWidth = Math.clamp(available / 3, 110, 420);
+            mobWidth = Math.clamp(available / 4, 96, 220);
+            previewWidth = Math.clamp(available / 3, 130, 420);
             propertyWidth = available - mobWidth - previewWidth;
             if (propertyWidth < 128) {
                 previewWidth = Math.max(80, previewWidth - (128 - propertyWidth));
@@ -80,7 +80,7 @@ public final class MobEditorLayout {
                 Math.max(48, contentBottom - tabs.bottom() - 4), width, height);
         Bounds preview = bounded(property.right() + gutter, contentTop, previewWidth,
                 contentBottom - contentTop, width, height);
-        Bounds actionBar = bounded(propertyX, actionY, propertyWidth, ACTION_HEIGHT,
+        Bounds actionBar = bounded(propertyX, actionY, propertyWidth, actionHeight,
                 width, height);
         return new MobEditorLayout(header, mobList, tabs, property, preview, actionBar);
     }

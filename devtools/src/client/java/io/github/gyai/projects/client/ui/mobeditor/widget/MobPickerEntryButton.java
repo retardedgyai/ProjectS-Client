@@ -2,9 +2,11 @@ package io.github.gyai.projects.client.ui.mobeditor.widget;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.widget.ProjectSButton;
+import io.github.gyai.projects.client.ui.widget.ProjectSTooltip;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
@@ -22,6 +24,7 @@ public final class MobPickerEntryButton extends AbstractButton {
     private final int swatch;
     private final String clippedLabel;
     private boolean selected;
+    private ProjectSTooltip customTooltip;
 
     public MobPickerEntryButton(
             int x, int y, int width, int height, Component message,
@@ -34,8 +37,8 @@ public final class MobPickerEntryButton extends AbstractButton {
         this.itemStack = itemStack == null ? ItemStack.EMPTY : itemStack;
         this.swatch = swatch;
         int leadingWidth = hasLeading() ? 24 : 0;
-        clippedLabel = Minecraft.getInstance().font.plainSubstrByWidth(
-                message.getString(), Math.max(1, width - 12 - leadingWidth));
+        clippedLabel = ProjectSTextRenderer.fit(message.getString(), 8,
+                Math.max(1, width - 12 - leadingWidth), false);
         setTooltip(null);
         this.action = action == null ? () -> { } : action;
     }
@@ -81,9 +84,13 @@ public final class MobPickerEntryButton extends AbstractButton {
                     tokens, !active, selected);
         }
         int textX = getX() + 8 + (hasLeading() ? 24 : 0);
-        graphics.text(Minecraft.getInstance().font, clippedLabel, textX,
-                getY() + (height - 8) / 2,
-                active ? tokens.textPrimary() : tokens.textDisabled(), false);
+        ProjectSTextRenderer.draw(graphics, clippedLabel, textX,
+                getY() + (height - 9) / 2.0, 8,
+                active ? tokens.textPrimary() : tokens.textDisabled());
+        if (customTooltip != null) {
+            customTooltip.render(graphics, Minecraft.getInstance().font,
+                    mouseX, mouseY, isHovered(), isFocused());
+        }
     }
 
     private boolean hasLeading() {
@@ -92,6 +99,12 @@ public final class MobPickerEntryButton extends AbstractButton {
 
     public MobPickerEntryButton selected(boolean value) {
         selected = value;
+        return this;
+    }
+
+    public MobPickerEntryButton tooltip(Component title, Component body, ProjectSTooltip.Tone tone) {
+        customTooltip = new ProjectSTooltip(title, body, tone);
+        setTooltip(null);
         return this;
     }
 

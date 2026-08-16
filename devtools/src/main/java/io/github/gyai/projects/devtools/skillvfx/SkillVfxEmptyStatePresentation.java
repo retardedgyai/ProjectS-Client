@@ -7,8 +7,8 @@ public final class SkillVfxEmptyStatePresentation {
     private SkillVfxEmptyStatePresentation() { }
     public static Decision decide(AbilityVisualEditorDocument document, SkillVfxModel.Hook hook, String emissionId) {
         boolean selectedEmission=document!=null&&emissionId!=null&&document.visual().emissions(hook).stream().anyMatch(value->value.id().equals(emissionId));
-        if(selectedEmission) return new Decision("VFX パーツが選択されていません。","+ VFX パーツを追加",Action.ADD_PRIMITIVE);
-        if(document!=null) return new Decision("このフックには発生グループが選択されていません。","+ 発生グループを追加",Action.ADD_EMISSION);
+        if(selectedEmission) return new Decision("編集するレイヤーを選択してください。","+ レイヤーを追加",Action.ADD_PRIMITIVE);
+        if(document!=null) return new Decision("このタイミングには演出がありません。","+ 新しい演出",Action.ADD_EMISSION);
         return new Decision("VFX を読み込み中です。","",Action.NONE);
     }
 }

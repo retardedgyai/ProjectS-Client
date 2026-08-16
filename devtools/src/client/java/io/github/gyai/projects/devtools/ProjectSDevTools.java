@@ -1,5 +1,6 @@
 package io.github.gyai.projects.devtools;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import io.github.gyai.projects.client.BalanceClientState;
 import io.github.gyai.projects.client.BalanceRequestPayload;
 import io.github.gyai.projects.client.BalanceStatePayload;
@@ -12,19 +13,34 @@ import io.github.gyai.projects.client.MobEditorV2RequestPayload;
 import io.github.gyai.projects.client.MobEditorV2StatePayload;
 import io.github.gyai.projects.client.beta.BetaClientRuntime;
 import io.github.gyai.projects.client.beta.BetaProtocol;
-import io.github.gyai.projects.client.menu.ProjectSMenuExtension;
-import io.github.gyai.projects.client.menu.ProjectSMenuExtensions;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfxWorldPreviewController;
 import io.github.gyai.projects.devtools.skillvfx.ui.SkillVfx3dAuthoringWorldRenderer;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.resources.Identifier;
+import org.lwjgl.glfw.GLFW;
 
 /** Optional developer entrypoint. It adds tools, never grants server permission. */
 public final class ProjectSDevTools implements ClientModInitializer {
+    private static final KeyMapping.Category DEVELOPER_CATEGORY = KeyMapping.Category.register(
+            Identifier.fromNamespaceAndPath("projects_devtools", "developer"));
+    private static int developerMenuCooldown;
+
+    static void suppressDeveloperMenuOpen() {
+        developerMenuCooldown = 2;
+    }
+
     @Override public void onInitializeClient() {
+        KeyMapping developerMenu = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.projects_devtools.developer_menu",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_RIGHT_SHIFT,
+                DEVELOPER_CATEGORY));
         SkillVfxWorldPreviewController.register();
         SkillVfx3dAuthoringWorldRenderer.register();
         BetaClientRuntime.enableCapability(BetaProtocol.Capability.MOB_EDITOR_V2);
@@ -55,8 +71,13 @@ public final class ProjectSDevTools implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayloadV2.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receiveV2(payload.state())));
         ClientPlayNetworking.registerGlobalReceiver(SkillEditorStatePayloadV3.TYPE, (payload, context) -> context.client().execute(() -> SkillEditorClientState.receiveV3(payload.state())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { BalanceClientState.reset(); MobEditorClientState.reset(); SkillEditorClientState.reset(); });
-        ProjectSMenuExtensions.register(new ProjectSMenuExtension("projects.devtools", "Developer Tools", "開発者向け機能（サーバー権限が必要です）", () -> true, ProjectSDevToolsMenuScreen::open));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (developerMenu.consumeClick()) {
+                if (developerMenuCooldown == 0 && client.level != null && client.screen == null) {
+                    client.setScreen(new ProjectSDevToolsMenuScreen(null));
+                }
+            }
+            if (developerMenuCooldown > 0) developerMenuCooldown--;
             if (client.level == null
                     && client.screen instanceof net.minecraft.client.gui.screens.TitleScreen) {
                 client.setScreen(new ProjectSDeveloperLaunchScreen());

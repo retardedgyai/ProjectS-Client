@@ -9,15 +9,15 @@ public final class ProjectSThemeRegistry {
 
     public ProjectSThemeRegistry() {
         ProjectSThemeTokens obsidian = new ProjectSThemeTokens(
-                0xFF07090C, 0xFF0B0E13,
-                0xFF10141A, 0xFF151A21, 0xFF1A2029, 0xFF1D242E,
-                0xFF242C37, 0xFF0D1116,
-                0xFF1C222B, 0xFF171C23, 0xFF272E38, 0xFF3A4350, 0xFF855BEA,
-                0xFFF3F4F7, 0xFFAEB5C0, 0xFF747C88, 0xFF454B55,
-                0xFF6846B8, 0xFF855BEA, 0xFF4D2E82, 0xFF35B9E6,
-                0xFF46D369, 0xFFFFC857, 0xFFFF4D4F, 0xFF4D8FFF,
-                0xFF17150E, 0xFF1A1013,
-                0xB8000000, 0x7A000000, 0x28855BEA);
+                0xFF090C0B, 0xFF0D110F,
+                0xFF292D29, 0xFF1E221F, 0xFF343934, 0xFF252A26,
+                0xFF3D443D, 0xFF171B18,
+                0x25475247, 0x253D463D, 0x35667566, 0x557D8B7D, 0xFFCEDF9F,
+                0xFFF0F3EB, 0xFFA7AFA4, 0xFF747C72, 0xFF555D54,
+                0xFFCEDF9F, 0xFFDEEBB7, 0xFFA9BD78, 0xFF91C5D9,
+                0xFFA7D89B, 0xFFE7B47F, 0xFFE08B84, 0xFF91C5D9,
+                0xFF211D18, 0xFF231918,
+                0xCC090C0B, 0x99050705, 0x40CEDF9F);
         ProjectSThemeMetrics metrics = ProjectSThemeMetrics.defaults();
         ProjectSThemeAssets assets = ProjectSThemeAssets.obsidian();
         EnumMap<ProjectSThemeId, ProjectSTheme> created =

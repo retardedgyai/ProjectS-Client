@@ -2,6 +2,7 @@ package io.github.gyai.projects.client.ui.widget;
 
 import io.github.gyai.projects.client.ui.render.ProjectSEasing;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
@@ -71,10 +72,11 @@ public final class ProjectSModal {
         y = Math.max(16, (graphics.guiHeight() - height) / 2);
         ProjectSUiDraw.cutPanel(graphics, x, y, width, height,
                 theme.metrics().modalCornerCut(), tokens.surfaceRaised(), tokens.borderStrong());
-        graphics.text(Minecraft.getInstance().font, title,
-                x + 18, y + 18, tokens.textPrimary(), false);
-        graphics.textWithWordWrap(Minecraft.getInstance().font, body,
-                x + 18, y + 42, width - 36, tokens.textSecondary(), false);
+        ProjectSTextRenderer.drawStrong(graphics, title.getString(),
+                x + 18, y + 16, 13, tokens.textPrimary());
+        ProjectSTextRenderer.draw(graphics,
+                ProjectSTextRenderer.fit(body.getString(), 9, width - 36, false),
+                x + 18, y + 42, 9, tokens.textSecondary());
         drawButton(graphics, x + width - 214, y + height - 42,
                 94, secondaryLabel, false, !primaryFocused);
         drawButton(graphics, x + width - 110, y + height - 42,
@@ -107,8 +109,10 @@ public final class ProjectSModal {
                 ? tokens.danger() : tokens.textPrimary();
         ProjectSIconRenderer.drawTinted(graphics, icon,
                 x + 8, y + 7, 12, iconColor);
-        graphics.centeredText(Minecraft.getInstance().font, label,
-                x + width / 2 + 6, y + 9, tokens.textPrimary());
+        String text = label.getString();
+        int textWidth = (int) Math.ceil(ProjectSTextRenderer.width(text, 8, true));
+        ProjectSTextRenderer.drawStrong(graphics, text,
+                x + (width - textWidth) / 2.0 + 6, y + 8, 8, tokens.textPrimary());
     }
 
     public boolean mouseClicked(MouseButtonEvent event) {

@@ -23,7 +23,8 @@ public final class ClientShellContractTest {
         require(screen, "ProjectSMenuScreen(Screen parent)");
         require(screen, "MinecraftUiRuntimeResources.currentOrNull()");
         require(screen, "clientShellVisualsReady()");
-        require(manager, "ProjectSMenuScreen.openIfReady(client, screen)");
+        assert !manager.contains("ProjectSMenuScreen.openIfReady") : "Client Core must not inject a menu entry";
+        assert !manager.contains("Button.builder") : "Client Core must not inject a vanilla PS button";
         require(root, "UiDrawList");
         require(root, "UiNode");
         String shellIconSources = root + shellCatalog;

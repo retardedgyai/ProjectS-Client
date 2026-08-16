@@ -2,15 +2,16 @@ package io.github.gyai.projects.client.ui.mobeditor;
 
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.screen.ProjectSThemedScreen;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
 import io.github.gyai.projects.client.ui.widget.ProjectSButton;
 import io.github.gyai.projects.client.ui.widget.ProjectSTextField;
+import io.github.gyai.projects.client.ui.widget.ProjectSTooltip;
 import io.github.gyai.projects.client.ui.mobeditor.widget.MobPickerEntryButton;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
@@ -115,7 +116,8 @@ public final class MobStringPickerScreen extends ProjectSThemedScreen {
                     ? entry.id() + (entry.category().isBlank()
                     ? "" : "\nカテゴリ: " + entry.category())
                     : entry.disabledReason();
-            button.setTooltip(Tooltip.create(Component.literal(tooltip)));
+            button.tooltip(Component.literal(entry.label()), Component.literal(tooltip),
+                    entry.enabled() ? ProjectSTooltip.Tone.NORMAL : ProjectSTooltip.Tone.WARNING);
             addRenderableWidget(button);
         }
         int bottom = panelY + panelHeight - 44;
@@ -177,15 +179,19 @@ public final class MobStringPickerScreen extends ProjectSThemedScreen {
                 theme.metrics().modalCornerCut(), tokens.surfaceRaised(), tokens.borderStrong());
         ProjectSIconRenderer.draw(graphics, ProjectSIcon.SEARCH,
                 panelX + 16, panelY + 18, 18, tokens, false, false);
-        graphics.text(font, heading, panelX + 44, panelY + 20,
-                tokens.textPrimary(), false);
+        ProjectSTextRenderer.drawStrong(graphics, heading,
+                panelX + 44, panelY + 18, 11, tokens.textPrimary());
         List<Entry> filtered = filtered();
-        graphics.text(font, filtered.size() + "件 / ページ " + (page + 1),
-                panelX + panelWidth - 130, panelY + 22, tokens.textMuted(), false);
+        String status = filtered.size() + "件 / ページ " + (page + 1);
+        int statusWidth = (int) Math.ceil(ProjectSTextRenderer.width(status, 8, false));
+        ProjectSTextRenderer.draw(graphics, status,
+                panelX + panelWidth - statusWidth - 16, panelY + 21, 8, tokens.textMuted());
         if (filtered.isEmpty()) {
-            graphics.centeredText(font, "一致する候補がありません",
-                    panelX + panelWidth / 2, panelY + panelHeight / 2,
-                    tokens.textMuted());
+            String empty = "一致する候補がありません";
+            int emptyWidth = (int) Math.ceil(ProjectSTextRenderer.width(empty, 9, false));
+            ProjectSTextRenderer.draw(graphics, empty,
+                    panelX + (panelWidth - emptyWidth) / 2.0,
+                    panelY + panelHeight / 2.0, 9, tokens.textMuted());
         }
         super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
     }

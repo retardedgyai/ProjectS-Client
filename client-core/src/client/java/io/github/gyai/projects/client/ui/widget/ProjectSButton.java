@@ -3,6 +3,7 @@ package io.github.gyai.projects.client.ui.widget;
 import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
 import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.icon.ProjectSIconColorRole;
 import io.github.gyai.projects.client.ui.icon.ProjectSIconState;
@@ -36,6 +37,7 @@ public class ProjectSButton extends AbstractButton {
     private long lastRenderNanos;
     private long pressedAtNanos;
     private boolean activeBeforeLoading = true;
+    private ProjectSTooltip customTooltip;
 
     public ProjectSButton(
             int x, int y, int width, int height,
@@ -65,10 +67,9 @@ public class ProjectSButton extends AbstractButton {
         this.action = action;
         labelText = message.getString();
         int labelWidth = Math.max(1, width - 8 - (icon == null ? 0 : 18));
-        clippedLabel = Minecraft.getInstance().font.plainSubstrByWidth(
-                labelText, labelWidth);
-        clippedLoadingLabel = Minecraft.getInstance().font.plainSubstrByWidth(
-                labelText, Math.max(1, width - 26));
+        clippedLabel = ProjectSTextRenderer.fit(labelText, 9, labelWidth, false);
+        clippedLoadingLabel = ProjectSTextRenderer.fit(labelText, 9,
+                Math.max(1, width - 26), false);
     }
 
     /** @deprecated Use {@link ProjectSIcon}. */
@@ -143,7 +144,7 @@ public class ProjectSButton extends AbstractButton {
         boolean showLeadIcon = icon != null || loading;
         int iconWidth = showLeadIcon ? 14 : 0;
         String label = loading ? clippedLoadingLabel : clippedLabel;
-        int textWidth = Minecraft.getInstance().font.width(label);
+        int textWidth = (int) Math.ceil(ProjectSTextRenderer.width(label, 9, true));
         int contentWidth = textWidth + (showLeadIcon ? iconWidth + 4 : 0);
         int contentX = getX() + Math.max(4, (width - contentWidth) / 2);
         if (loading) {
@@ -163,8 +164,12 @@ public class ProjectSButton extends AbstractButton {
             }
             contentX += iconWidth + 2;
         }
-        graphics.text(Minecraft.getInstance().font, label, contentX,
-                y + (height - 8) / 2, textColor, false);
+        ProjectSTextRenderer.drawStrong(graphics, label, contentX,
+                y + (height - 10) / 2.0, 9, textColor);
+        if (customTooltip != null) {
+            customTooltip.render(graphics, Minecraft.getInstance().font,
+                    mouseX, mouseY, isHovered(), isFocused());
+        }
     }
 
     private int background(ProjectSThemeTokens tokens, boolean pressed) {
@@ -174,7 +179,7 @@ public class ProjectSButton extends AbstractButton {
         int normal = switch (kind) {
             case PRIMARY -> tokens.accentPrimary();
             case SECONDARY -> tokens.surfaceRaised();
-            case GHOST -> tokens.backgroundAlt();
+            case GHOST -> tokens.surfaceAlt();
             case DANGER -> tokens.dangerSurface();
         };
         int hover = switch (kind) {
@@ -213,6 +218,12 @@ public class ProjectSButton extends AbstractButton {
         if (value) activeBeforeLoading = active;
         loading = value;
         active = value ? false : activeBeforeLoading;
+        return this;
+    }
+
+    public ProjectSButton tooltip(Component title, Component body, ProjectSTooltip.Tone tone) {
+        customTooltip = new ProjectSTooltip(title, body, tone);
+        setTooltip(null);
         return this;
     }
 

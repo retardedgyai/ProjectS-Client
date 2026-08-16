@@ -3,9 +3,10 @@ package io.github.gyai.projects.client.ui.widget;
 import io.github.gyai.projects.client.ui.render.ProjectSColorMath;
 import io.github.gyai.projects.client.ui.render.ProjectSEasing;
 import io.github.gyai.projects.client.ui.render.ProjectSIconRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSTextRenderer;
+import io.github.gyai.projects.client.ui.render.ProjectSUiDraw;
 import io.github.gyai.projects.client.ui.icon.ProjectSIcon;
 import io.github.gyai.projects.client.ui.theme.ProjectSThemeManager;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
@@ -68,21 +69,20 @@ public final class ProjectSToggle extends AbstractButton {
                 tokens.surfacePressed(), tokens.accentPrimary(), position);
         int border = isFocused() ? tokens.borderSelected()
                 : value ? tokens.accentPrimary() : tokens.borderSubtle();
-        graphics.fill(trackX, trackY, trackX + trackWidth, trackY + trackHeight, fill);
-        graphics.outline(trackX, trackY, trackWidth, trackHeight, border);
+        ProjectSUiDraw.cutPanel(graphics, trackX, trackY, trackWidth, trackHeight,
+                7, fill, border);
         int knobX = trackX + 3 + (int) Math.round(position * (trackWidth - 14));
         graphics.fill(knobX, trackY + 3, knobX + 10, trackY + 13,
                 active ? tokens.textPrimary() : tokens.textDisabled());
-        graphics.text(Minecraft.getInstance().font,
-                value ? onLabel : offLabel,
-                getX() + 16, getY() + 4,
-                active ? tokens.textPrimary() : tokens.textDisabled(), false);
+        ProjectSTextRenderer.drawStrong(graphics, value ? onLabel : offLabel,
+                getX() + 16, getY() + 3, 8,
+                active ? tokens.textPrimary() : tokens.textDisabled());
         ProjectSIconRenderer.draw(graphics,
                 value ? ProjectSIcon.CHECKBOX_CHECKED : ProjectSIcon.CHECKBOX_EMPTY,
                 getX(), getY() + 3, 12, tokens, !active, value);
         if (!helperBlank) {
-            graphics.text(Minecraft.getInstance().font, helper,
-                    getX() + 16, getY() + 18, tokens.textMuted(), false);
+            ProjectSTextRenderer.draw(graphics, helper.getString(),
+                    getX() + 16, getY() + 17, 7, tokens.textMuted());
         }
     }
 
