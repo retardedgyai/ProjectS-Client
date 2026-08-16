@@ -68,6 +68,11 @@ public final class ProjectSNumberField extends ProjectSTextField {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
+                || event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+            validateAndCommit();
+            return true;
+        }
         if (event.isUp()) {
             increment(event.hasShiftDown());
             return true;
@@ -83,6 +88,10 @@ public final class ProjectSNumberField extends ProjectSTextField {
     public void setFocused(boolean focused) {
         boolean wasFocused = isFocused();
         super.setFocused(focused);
+        if (focused && !wasFocused) {
+            setCursorPosition(0);
+            setHighlightPos(getValue().length());
+        }
         if (wasFocused && !focused) validateAndCommit();
     }
 
@@ -99,6 +108,10 @@ public final class ProjectSNumberField extends ProjectSTextField {
     }
 
     private void commit(double value) {
+        if (Double.compare(committedValue, value) == 0) {
+            setValue(format(value));
+            return;
+        }
         committedValue = value;
         setValue(format(value));
         onCommit.accept(value);

@@ -7,6 +7,7 @@ import io.github.gyai.projects.client.vfx.AbilityVfx;
 import io.github.gyai.projects.devtools.SkillEditorScreen;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxDirectAuthoring;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxModel;
+import io.github.gyai.projects.devtools.skillvfx.SkillVfxAnchorAuthoring;
 import io.github.gyai.projects.devtools.skillvfx.MotionAuthoringPresentation;
 import io.github.gyai.projects.devtools.skillvfx.SkillVfxVisualUxPresentation;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
@@ -59,6 +60,18 @@ public final class SkillVfx3dAuthoringWorldRenderer {
             MotionAuthoringPresentation.GuideState guide = MotionAuthoringPresentation.guide(primitive, frame, action, progress, AbilityVfx.Quality.HIGH);
             if (!guide.supported()) return;
             List<AbilityVfx.Command> commands = new ArrayList<>();
+            var range = SkillVfxAnchorAuthoring.range(frame, action);
+            if (range != null) {
+                var caster = frame.world(new AbilityVfx.Vec(0, 0, 0));
+                var targetAnchor = range.end();
+                if (caster != null && targetAnchor != null) {
+                    commands.add(line(caster, targetAnchor, 90, 220, 255));
+                    addRangeRing(commands, frame, range.distance(), 90, 220, 255);
+                    addAnchorMarker(commands, caster, 80, 220, 255, .16);
+                    addAnchorMarker(commands, targetAnchor, 255, 190, 70, .16);
+                    addAnchorMarker(commands, targetAnchor, 255, 80, 110, .10);
+                }
+            }
             for (SkillVfxDirectAuthoring.PrimitiveTarget candidate : owner.authoringTargets()) {
                 if (!candidate.primitive().id().equals(primitive.id())) add(commands,
                         SkillVfxDirectAuthoring.guide(candidate.primitive(), frame, candidate.action()),
@@ -138,6 +151,24 @@ public final class SkillVfx3dAuthoringWorldRenderer {
                 commands.add(line(at.add(new AbilityVfx.Vec(-.08, 0, 0)), at.add(new AbilityVfx.Vec(.08, 0, 0)), r, g, b));
                 commands.add(line(at.add(new AbilityVfx.Vec(0, -.08, 0)), at.add(new AbilityVfx.Vec(0, .08, 0)), r, g, b));
             }
+        }
+    }
+
+    private static void addAnchorMarker(List<AbilityVfx.Command> commands, AbilityVfx.Vec at,
+                                        int r, int g, int b, double size) {
+        commands.add(line(at.add(new AbilityVfx.Vec(-size, 0, 0)), at.add(new AbilityVfx.Vec(size, 0, 0)), r, g, b));
+        commands.add(line(at.add(new AbilityVfx.Vec(0, -size, 0)), at.add(new AbilityVfx.Vec(0, size, 0)), r, g, b));
+        commands.add(line(at.add(new AbilityVfx.Vec(0, 0, -size)), at.add(new AbilityVfx.Vec(0, 0, size)), r, g, b));
+    }
+
+    private static void addRangeRing(List<AbilityVfx.Command> commands, AbilityVfx.Frame frame,
+                                     double radius, int r, int g, int b) {
+        AbilityVfx.Vec previous = null;
+        for (int i = 0; i <= 32; i++) {
+            double angle = Math.PI * 2 * i / 32d;
+            AbilityVfx.Vec point = frame.world(new AbilityVfx.Vec(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
+            if (previous != null && point != null) commands.add(line(previous, point, r, g, b));
+            previous = point;
         }
     }
 
