@@ -61,16 +61,17 @@ public final class SkillVfx3dAuthoringWorldRenderer {
             if (!guide.supported()) return;
             List<AbilityVfx.Command> commands = new ArrayList<>();
             var range = SkillVfxAnchorAuthoring.range(frame, action);
-            if (range != null) {
-                var caster = frame.world(new AbilityVfx.Vec(0, 0, 0));
-                var targetAnchor = range.end();
-                if (caster != null && targetAnchor != null) {
+            var authoredAnchors = owner.authoringAnchors();
+            var caster = authoredAnchors.stream().filter(a -> a.kind() == SkillVfxAnchorAuthoring.Kind.CASTER).map(SkillVfxAnchorAuthoring.Anchor::position).findFirst().orElse(null);
+            var targetAnchor = authoredAnchors.stream().filter(a -> a.kind() == SkillVfxAnchorAuthoring.Kind.TARGET).map(SkillVfxAnchorAuthoring.Anchor::position).findFirst().orElse(null);
+            var impactAnchor = authoredAnchors.stream().filter(a -> a.kind() == SkillVfxAnchorAuthoring.Kind.IMPACT).map(SkillVfxAnchorAuthoring.Anchor::position).findFirst().orElse(null);
+            if (range != null && caster != null && targetAnchor != null && impactAnchor != null) {
                     commands.add(line(caster, targetAnchor, 90, 220, 255));
+                    commands.add(line(targetAnchor, impactAnchor, 255, 190, 70));
                     addRangeRing(commands, frame, range.distance(), 90, 220, 255);
                     addAnchorMarker(commands, caster, 80, 220, 255, .16);
                     addAnchorMarker(commands, targetAnchor, 255, 190, 70, .16);
-                    addAnchorMarker(commands, targetAnchor, 255, 80, 110, .10);
-                }
+                    addAnchorMarker(commands, impactAnchor, 255, 80, 110, .10);
             }
             for (SkillVfxDirectAuthoring.PrimitiveTarget candidate : owner.authoringTargets()) {
                 if (!candidate.primitive().id().equals(primitive.id())) add(commands,
